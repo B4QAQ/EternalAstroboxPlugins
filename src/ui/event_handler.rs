@@ -756,7 +756,7 @@ pub fn fetch_device_info_from_server() {
 // ========== 天气同步 ==========
 
 fn send_weather_data() {
-    let (api_key, selected_idx, city_list, days, _sync_hourly, _sync_alerts) = {
+    let (api_key, selected_idx, city_list, days, sync_hourly, sync_alerts) = {
         let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
         (
             state.api_key.clone(),
@@ -781,6 +781,7 @@ fn send_weather_data() {
         }
     };
 
+    // 构建天气数据请求
     let url = format!("{}/api/v2/3f/getWeather/Eternal", server_api_base());
     let body = serde_json::json!({
         "Key": api_key,
@@ -791,8 +792,10 @@ fn send_weather_data() {
 
     match super::api_client::post_json_no_auth(&url, &body) {
         Ok(mut weather_json) => {
+            // 添加位置信息
             weather_json["location"] = serde_json::Value::String(city.name.clone());
 
+            // 发送天气数据到设备
             let payload = serde_json::json!({
                 "type": "PUT_WEATHERDATA",
                 "data": {
@@ -804,7 +807,25 @@ fn send_weather_data() {
             let city_clone = city.clone();
             mark_sync_started(&city_clone);
 
+            let sync_hourly_clone = sync_hourly;
+            let sync_alerts_clone = sync_alerts;
+
             wit_bindgen::block_on(async move {
+                // 发送逐小时天气数据（如果开启）
+                if sync_hourly_clone {
+                    if let Err(e) = send_hourly_weather(&api_key, &city_clone).await {
+                        tracing::warn!("逐小时天气同步失败: {}", e);
+                    }
+                }
+
+                // 发送预警数据（如果开启）
+                if sync_alerts_clone {
+                    if let Err(e) = send_weather_alerts(&api_key, &city_clone).await {
+                        tracing::warn!("预警数据同步失败: {}", e);
+                    }
+                }
+
+                // 发送主要天气数据
                 match send_weather_to_device(&payload).await {
                     Ok(()) => show_alert("成功", "同步成功"),
                     Err(e) => show_alert("失败", &format!("同步失败: {}", e)),
@@ -815,6 +836,60 @@ fn send_weather_data() {
             show_alert("失败", &format!("获取天气失败: {}", e));
         }
     }
+}
+
+/// 同步逐小时天气数据
+async fn send_hourly_weather(api_key: &str, city: &CityInfo) -> Result<(), String> {
+    let url = format!("{}/api/v2/3f/getHourly/Eternal", server_api_base());
+    let body = serde_json::json!({
+        "Key": api_key,
+        "longitude": city.lon,
+        "latitude": city.lat
+    });
+
+    let json = super::api_client::post_json_no_auth(&url, &body)
+        .map_err(|e| format!("获取逐小时天气失败: {}", e))?;
+
+    let payload = serde_json::json!({
+        "type": "PUT_HOURLYDATA",
+        "data": {
+            "cityindex": 0,
+            "result": json
+        }
+    }).to_string();
+
+    if let Some(device_addr) = get_device_addr().await {
+        send_interconnect_message(&device_addr, &payload).await;
+    }
+
+    Ok(())
+}
+
+/// 同步天气预警数据
+async fn send_weather_alerts(api_key: &str, city: &CityInfo) -> Result<(), String> {
+    let url = format!("{}/api/v2/3f/getWarn/Eternal", server_api_base());
+    let body = serde_json::json!({
+        "Key": api_key,
+        "longitude": city.lon,
+        "latitude": city.lat
+    });
+
+    let json = super::api_client::post_json_no_auth(&url, &body)
+        .map_err(|e| format!("获取预警数据失败: {}", e))?;
+
+    let payload = serde_json::json!({
+        "type": "PUT_WARNDATA",
+        "data": {
+            "cityindex": 0,
+            "result": json
+        }
+    }).to_string();
+
+    if let Some(device_addr) = get_device_addr().await {
+        send_interconnect_message(&device_addr, &payload).await;
+    }
+
+    Ok(())
 }
 
 fn mark_sync_started(city: &CityInfo) {
