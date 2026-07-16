@@ -721,10 +721,7 @@ fn verify_api_key_signature(api_key: &str, signature: &str) -> bool {
         }
     };
 
-    // 3. 使用PKCS1v15验证签名
-    // 快应用 crypto.verify(algo: 'RSA-SHA256') 使用 RSASSA-PKCS1-v1_5 with SHA-256
-    // new_unprefixed 表示签名不包含 DigestInfo OID 前缀
-    let verifying_key = rsa::pkcs1v15::VerifyingKey::<Sha256>::new_unprefixed(public_key);
+    // 3. 构造签名对象
     let signature_obj = match rsa::pkcs1v15::Signature::try_from(signature_bytes.as_slice()) {
         Ok(sig) => sig,
         Err(e) => {
@@ -733,7 +730,11 @@ fn verify_api_key_signature(api_key: &str, signature: &str) -> bool {
         }
     };
 
-    // 4. 验证签名
+    // 4. 使用 PKCS1v15 验证签名 (unprefixed 模式)
+    // 华为快应用的 crypto.verify(algo: 'RSA-SHA256') 使用的是标准 RSASSA-PKCS1-v1_5
+    // 这里的 unprefixed 表示签名直接是加密的哈希值，不包含 DigestInfo OID 前缀
+    let verifying_key = rsa::pkcs1v15::VerifyingKey::<Sha256>::new_unprefixed(public_key);
+
     match verifying_key.verify(api_key.as_bytes(), &signature_obj) {
         Ok(()) => {
             tracing::info!("RSA签名验证成功");
@@ -741,6 +742,10 @@ fn verify_api_key_signature(api_key: &str, signature: &str) -> bool {
         }
         Err(e) => {
             tracing::error!("RSA签名验证失败: {:?}", e);
+
+            // 如果失败，可能是签名格式问题，打印更多信息帮助调试
+            tracing::error!("APIKey: {}", api_key);
+            tracing::error!("签名字节长度: {}", signature_bytes.len());
             false
         }
     }
