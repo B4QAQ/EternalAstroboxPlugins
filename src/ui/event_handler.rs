@@ -792,9 +792,9 @@ fn send_weather_data() {
         let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.sync_progress = SyncProgress {
             syncing: true,
-            current_day: days,
-            total_days: days,
-            status_text: "准备同步...".to_string(),
+            current_day: 14,
+            total_days: 14,
+            status_text: "获取天气数据...".to_string(),
         };
     }
     crate::ui::build::rerender_main_ui();
@@ -802,55 +802,68 @@ fn send_weather_data() {
     mark_sync_started(&city_clone);
 
     wit_bindgen::block_on(async move {
-        // 倒序同步：从最后一天向第一天同步
-        let total = days;
-        let mut success_count = 0u32;
         let mut error_msg = String::new();
 
-        for day in (1..=total).rev() {
-            // 更新进度
-            {
-                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
-                state.sync_progress.current_day = total - day + 1;
-                state.sync_progress.status_text = format!("正在同步第 {} 天...", total - day + 1);
-            }
-            crate::ui::build::rerender_main_ui();
+        // 一次性获取14天天气数据
+        let url = format!("{}/api/v2/3f/getWeather/Eternal", server_api_base());
+        let body = serde_json::json!({
+            "Key": &api_key_clone,
+            "longitude": &city_clone.lon,
+            "latitude": &city_clone.lat,
+            "days": 14
+        });
 
-            // 获取单天天气数据
-            let url = format!("{}/api/v2/3f/getWeather/Eternal", server_api_base());
-            let body = serde_json::json!({
-                "Key": &api_key_clone,
-                "longitude": &city_clone.lon,
-                "latitude": &city_clone.lat,
-                "days": 1  // 只获取1天数据
-            });
+        match super::api_client::post_json_no_auth(&url, &body) {
+            Ok(weather_json) => {
+                // 更新状态：准备发送
+                {
+                    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.sync_progress.status_text = "发送数据到设备...".to_string();
+                }
+                crate::ui::build::rerender_main_ui();
 
-            match super::api_client::post_json_no_auth(&url, &body) {
-                Ok(mut weather_json) => {
-                    weather_json["location"] = serde_json::Value::String(city_clone.name.clone());
-
-                    let payload = serde_json::json!({
-                        "type": "PUT_WEATHERDATA",
-                        "data": {
-                            "cityindex": 0,
-                            "result": weather_json
-                        }
-                    }).to_string();
-
-                    if let Some(device_addr) = get_device_addr().await {
-                        send_interconnect_message(&device_addr, &payload).await;
-                        success_count += 1;
-                        // 每次同步间隔一小段时间
-                        std::thread::sleep(Duration::from_millis(500));
-                    } else {
+                // 检查设备连接
+                let device_addr = match get_device_addr().await {
+                    Some(addr) => addr,
+                    None => {
                         error_msg = "设备连接丢失".to_string();
-                        break;
+                        {
+                            let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                            state.sync_progress.syncing = false;
+                        }
+                        crate::ui::build::rerender_main_ui();
+                        show_alert("失败", &error_msg);
+                        return;
                     }
+                };
+
+                // 构建并发送天气数据（包含14天）
+                let mut payload_json = weather_json.clone();
+                payload_json["location"] = serde_json::Value::String(city_clone.name.clone());
+
+                let payload = serde_json::json!({
+                    "type": "PUT_WEATHERDATA",
+                    "data": {
+                        "cityindex": 0,
+                        "result": payload_json
+                    }
+                }).to_string();
+
+                send_interconnect_message(&device_addr, &payload).await;
+
+                // 更新进度
+                for day in (1..=14).rev() {
+                    {
+                        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        state.sync_progress.current_day = 15 - day;
+                        state.sync_progress.status_text = format!("同步进度 {}/14", 15 - day);
+                    }
+                    crate::ui::build::rerender_main_ui();
+                    std::thread::sleep(Duration::from_millis(100));
                 }
-                Err(e) => {
-                    error_msg = format!("获取第 {} 天数据失败: {}", total - day + 1, e);
-                    break;
-                }
+            }
+            Err(e) => {
+                error_msg = format!("获取天气数据失败: {}", e);
             }
         }
 
@@ -876,7 +889,7 @@ fn send_weather_data() {
         crate::ui::build::rerender_main_ui();
 
         if error_msg.is_empty() {
-            show_alert("成功", &format!("同步完成，共 {} 天", success_count));
+            show_alert("成功", "同步完成，共14天");
         } else {
             show_alert("失败", &error_msg);
         }
