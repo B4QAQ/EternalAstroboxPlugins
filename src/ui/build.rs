@@ -408,7 +408,7 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
 
     if state.city_list.is_empty() {
         let option = ui::Element::new(ui::ElementType::Option, Some("请先添加城市"))
-            .prop("value", "");
+            .prop("value", "empty");
         city_select = city_select.child(option);
     } else {
         for (idx, city) in state.city_list.iter().enumerate() {
