@@ -1108,10 +1108,8 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         .size(14);
 
     for (key, label) in range_options {
-        let mut option = ui::Element::new(ui::ElementType::Option, Some(label));
-        if key == state.city_search_range {
-            option = option.prop("selected", "true");
-        }
+        let option = ui::Element::new(ui::ElementType::Option, Some(label))
+            .prop("value", key);
         range_select = range_select.child(option);
     }
 
@@ -1135,11 +1133,8 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         .size(14);
 
     for num in number_options {
-        let option_text = format!("{} 个", num);
-        let mut option = ui::Element::new(ui::ElementType::Option, Some(&option_text));
-        if num == state.city_search_number {
-            option = option.prop("selected", "true");
-        }
+        let option = ui::Element::new(ui::ElementType::Option, Some(&format!("{} 个", num)))
+            .prop("value", &num.to_string());
         number_select = number_select.child(option);
     }
 

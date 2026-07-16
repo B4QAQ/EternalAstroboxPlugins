@@ -187,13 +187,17 @@ pub fn ui_event_processor(
         SEARCH_RANGE_EVENT => {
             let value = parse_event_value(event_payload);
             tracing::info!("SEARCH_RANGE_EVENT value: {}", value);
-            // 解析范围值（显示文本转ISO代码）
+            // 优先使用 value 属性，否则用文本匹配
             let range = match value.as_str() {
-                "全球" | "" => "",
-                "中国" | "cn" => "cn",
-                "日本" | "jp" => "jp",
+                "" => "",
+                "cn" => "cn",
+                "jp" => "jp",
+                "全球" => "",
+                "中国" => "cn",
+                "日本" => "jp",
                 _ => "",
             };
+            tracing::info!("SEARCH_RANGE_EVENT resolved range: '{}'", range);
             {
                 let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
                 state.city_search_range = range.to_string();
