@@ -1018,8 +1018,6 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
     // 第一个卡片：APIKey状态 + 显示/隐藏
     let api_key_card = build_apikey_status_card(state);
 
-    // 第二个卡片：请求用量 + 进度条
-    let usage_card = build_usage_card(state);
     // 从服务器获取的设备信息
     let mut info_cards = Vec::new();
 
@@ -1040,18 +1038,6 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
                 );
                 info_cards.push(upgrade_card);
             }
-        }
-
-        // billingMode
-        if let Some(billing_mode) = result.get("billingMode").and_then(|v| v.as_str()) {
-            let mode_card = build_settings_card(
-                icons::hash_svg(),
-                "计费模式",
-                Some(billing_mode),
-                None,
-                None,
-            );
-            info_cards.push(mode_card);
         }
 
         // 到期时间（订阅制）
@@ -1076,6 +1062,24 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
                 None,
             );
             info_cards.push(remain_card);
+        }
+    }
+
+    // 第二个卡片：请求用量 + 进度条
+    let usage_card = build_usage_card(state);
+
+    // 计费模式（放在请求用量下面）
+    let mut billing_mode_card = None;
+    if let Some(ref info) = state.server_device_info {
+        let result = info.get("result").unwrap_or(info);
+        if let Some(billing_mode) = result.get("billingMode").and_then(|v| v.as_str()) {
+            billing_mode_card = Some(build_settings_card(
+                icons::hash_svg(),
+                "计费模式",
+                Some(billing_mode),
+                None,
+                None,
+            ));
         }
     }
 
@@ -1205,7 +1209,14 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
     let mut root = root
         .child(auth_title)
         .child(api_key_card)
-        .child(usage_card)
+        .child(usage_card);
+
+    // 计费模式放在请求用量下面
+    if let Some(card) = billing_mode_card {
+        root = root.child(card);
+    }
+
+    root = root
         .child(refresh_button)
         .child(search_title)
         .child(range_card)
