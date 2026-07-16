@@ -234,47 +234,65 @@ fn build_verification_ui(state: &UiState) -> ui::Element {
                     .text_color("#666666")
             };
 
-            let hint = ui::Element::new(ui::ElementType::P, Some("请通过以下方式激活您的设备"))
-                .size(14)
-                .text_color("#888888")
-                .margin_top(16)
-                .margin_bottom(12);
+            // 分隔
+            let spacer = ui::Element::new(ui::ElementType::Div, None)
+                .height(16);
 
-            // 跳转支付按钮
+            // 付费版激活提示
+            let paid_title = ui::Element::new(ui::ElementType::P, Some("付费版激活"))
+                .size(16)
+                .text_color("#FFFFFF")
+                .margin_bottom(8);
+
+            // 跳转支付页面按钮（用户手动点击）
             let pay_button = build_icon_text_button_full(
-                "跳转至支付网页",
+                "前往支付页面",
                 icons::more_link_svg(),
-                CHECK_PAYMENT_EVENT, // 点击跳转支付页
+                OPEN_VERIFY_URL_EVENT,
             ).bg("#0090FF").text_color("#FFFFFF").margin_bottom(8);
 
-            // 免费版按钮
-            let free_button = build_icon_text_button_full(
-                "免费版",
-                icons::afd_svg(),
-                UPGRADE_TO_PAID_EVENT, // 暂时复用，实际需要免费版逻辑
-            ).bg("#4CAF50").text_color("#FFFFFF").margin_bottom(16);
-
             // 已支付提示
-            let paid_hint = ui::Element::new(ui::ElementType::P, Some("已支付?"))
-                .size(14)
+            let paid_hint = ui::Element::new(ui::ElementType::P, Some("支付完成后点击下方按钮验证"))
+                .size(13)
                 .text_color("#888888")
                 .margin_bottom(8);
 
             // 验证支付按钮
-            let verify_button = build_icon_text_button_full(
+            let verify_paid_button = build_icon_text_button_full(
                 "验证支付",
                 icons::refresh_auth_svg(),
                 CHECK_PAYMENT_EVENT,
-            ).bg("#FF9800").text_color("#FFFFFF");
+            ).bg("#FF9800").text_color("#FFFFFF").margin_bottom(16);
+
+            // 免费版分隔
+            let free_title = ui::Element::new(ui::ElementType::P, Some("免费版激活"))
+                .size(16)
+                .text_color("#FFFFFF")
+                .margin_bottom(8);
+
+            let free_hint = ui::Element::new(ui::ElementType::P, Some("免费版有请求次数限制"))
+                .size(13)
+                .text_color("#888888")
+                .margin_bottom(8);
+
+            // 免费版按钮
+            let free_button = build_icon_text_button_full(
+                "免费激活",
+                icons::afd_svg(),
+                FREE_VERSION_EVENT,
+            ).bg("#4CAF50").text_color("#FFFFFF");
 
             root.child(title)
                 .child(you_device)
                 .child(device_card)
-                .child(hint)
+                .child(spacer)
+                .child(paid_title)
                 .child(pay_button)
-                .child(free_button)
                 .child(paid_hint)
-                .child(verify_button)
+                .child(verify_paid_button)
+                .child(free_title)
+                .child(free_hint)
+                .child(free_button)
         }
 
         VerificationStatus::VerifyingPayment => {

@@ -24,6 +24,8 @@ pub const DELETE_CITY_PREFIX: &str = "delete_city:";
 pub const CHECK_PAYMENT_EVENT: &str = "check_payment";
 pub const UPGRADE_TO_PAID_EVENT: &str = "upgrade_to_paid";
 pub const REFRESH_DEVICE_INFO_EVENT: &str = "refresh_device_info";
+pub const FREE_VERSION_EVENT: &str = "free_version";
+pub const OPEN_VERIFY_URL_EVENT: &str = "open_verify_url";
 pub const CITY_ORDER_PREFIX: &str = "city_order:";
 pub const TOGGLE_APIKEY_VISIBLE_EVENT: &str = "toggle_apikey_visible";
 pub const SEARCH_CITY_EVENT: &str = "search_city";
@@ -228,6 +230,8 @@ pub fn ui_event_processor(
         CHECK_PAYMENT_EVENT => check_payment_status(),
         UPGRADE_TO_PAID_EVENT => start_verification(false),
         REFRESH_DEVICE_INFO_EVENT => refresh_device_info(),
+        FREE_VERSION_EVENT => verify_free_version(),
+        OPEN_VERIFY_URL_EVENT => open_verify_url_from_state(),
         SELECT_CITY_DROPDOWN_EVENT => {
             let parsed_value = parse_event_value(event_payload);
             tracing::info!("SELECT_CITY_DROPDOWN_EVENT: payload={}, parsed={}", event_payload, parsed_value);
@@ -456,12 +460,12 @@ fn handle_device_info_received(data: &serde_json::Value) {
 
     {
         let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
-        state.device_info = Some(device_info.clone());
+        state.device_info = Some(device_info);
         state.verification_status = VerificationStatus::WaitingPayment;
     }
 
+    // 不自动跳转，让用户自己点击
     crate::ui::build::rerender_main_ui();
-    open_verification_url(&device_info);
 }
 
 fn parse_device_info(data: &serde_json::Value) -> DeviceInfo {
@@ -481,6 +485,38 @@ fn parse_device_info(data: &serde_json::Value) -> DeviceInfo {
         model: data.get("model").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         // 蓝牙地址
         btAddr: data.get("btAddr").or_else(|| data.get("bt_address")).or_else(|| data.get("mac")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+    }
+}
+
+/// 从状态中获取设备信息并打开验证页面
+fn open_verify_url_from_state() {
+    let device_info = {
+        let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.device_info.clone()
+    };
+
+    if let Some(device_info) = device_info {
+        let timestamp = now_ms() / 1000;
+        // 拼接格式: product.deviceId.serial.timestamp
+        let verify_data = format!(
+            "{}.{}.{}.{}",
+            device_info.product,
+            device_info.deviceId,
+            device_info.serial,
+            timestamp
+        );
+
+        let encoded_data = encode(&verify_data);
+        let verify_url = format!(
+            "{}/api/v2/verify/Eternal?data={}",
+            server_api_base(),
+            encoded_data
+        );
+
+        tracing::info!("打开验证页面: {}", verify_url);
+        dialog::open_url(&verify_url);
+    } else {
+        show_alert("错误", "设备信息缺失");
     }
 }
 
@@ -504,6 +540,84 @@ fn open_verification_url(device_info: &DeviceInfo) {
 
     tracing::info!("打开验证页面: {}", verify_url);
     dialog::open_url(&verify_url);
+}
+
+/// 免费版验证
+fn verify_free_version() {
+    tracing::info!("免费版验证...");
+
+    {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.verification_status = VerificationStatus::VerifyingPayment;
+    }
+    crate::ui::build::rerender_main_ui();
+
+    wit_bindgen::block_on(async move {
+        let device_info = {
+            let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.device_info.clone()
+        };
+
+        if let Some(device_info) = device_info {
+            let timestamp = now_ms() / 1000;
+            // 拼接格式: product.deviceId.serial.timestamp
+            let verify_data = format!(
+                "{}.{}.{}.{}",
+                device_info.product,
+                device_info.deviceId,
+                device_info.serial,
+                timestamp
+            );
+
+            let encoded_data = encode(&verify_data);
+            let check_url = format!(
+                "{}/api/v2/verifyCheck/Eternal?data={}&type=free",
+                server_api_base(),
+                encoded_data
+            );
+
+            tracing::info!("免费版验证URL: {}", check_url);
+
+            // 使用不需要认证的请求
+            match super::api_client::get_json_no_auth(&check_url) {
+                Ok(json) => {
+                    tracing::info!("verifyCheck free response: {:?}", json);
+                    if json.get("status").and_then(|v| v.as_i64()) == Some(200) {
+                        if let Some(result) = json.get("result") {
+                            let api_key = result.get("APIKey").and_then(|v| v.as_str()).unwrap_or("");
+                            let signature = result.get("signature").and_then(|v| v.as_str()).unwrap_or("");
+
+                            tracing::info!("APIKey: {}, signature length: {}", api_key, signature.len());
+
+                            if verify_api_key_signature(api_key, signature) {
+                                tracing::info!("签名验证成功，发送到设备");
+                                send_put_settings(api_key);
+                            } else {
+                                tracing::error!("签名验证失败");
+                                show_alert("错误", "签名验证失败");
+                                set_verification_failed();
+                            }
+                        } else {
+                            show_alert("错误", "返回数据格式错误");
+                            set_verification_failed();
+                        }
+                    } else {
+                        let msg = json.get("message").and_then(|v| v.as_str()).unwrap_or("未知错误");
+                        show_alert("提示", &format!("验证失败: {}", msg));
+                        set_verification_failed();
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("verify_free_version error: {}", e);
+                    show_alert("失败", &format!("请求失败: {}", e));
+                    set_verification_failed();
+                }
+            }
+        } else {
+            show_alert("错误", "设备信息缺失，请重新验证");
+            set_verification_failed();
+        }
+    });
 }
 
 fn check_payment_status() {
