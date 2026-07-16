@@ -145,118 +145,211 @@ fn build_verification_ui(state: &UiState) -> ui::Element {
         .flex_direction(ui::FlexDirection::Column)
         .width_full()
         .align_center()
-        .gap(20);
+        .gap(16);
 
-    // 图标和标题区域
-    let icon_section = ui::Element::new(ui::ElementType::Div, None)
-        .flex()
-        .flex_direction(ui::FlexDirection::Column)
-        .align_center()
-        .gap(12);
+    match state.verification_status {
+        VerificationStatus::NotStarted => {
+            // 欢迎使用永昼天气
+            let title = ui::Element::new(ui::ElementType::P, Some("欢迎使用永昼天气"))
+                .size(24)
+                .text_color("#FFFFFF")
+                .margin_bottom(8);
 
-    // 状态图标（根据状态显示不同颜色）
-    let (icon_color, status_icon) = match state.verification_status {
-        VerificationStatus::NotStarted => ("#888888", "○"),
-        VerificationStatus::CheckingDevice | VerificationStatus::GettingAPIKey | VerificationStatus::GettingDeviceInfo | VerificationStatus::VerifyingPayment => ("#0090FF", "◐"),
-        VerificationStatus::WaitingPayment => ("#FF9800", "◎"),
-        VerificationStatus::Verified => ("#4CAF50", "●"),
-        VerificationStatus::Failed => ("#F44336", "✕"),
-    };
+            let subtitle = ui::Element::new(ui::ElementType::P, Some("接下来开始进行验证"))
+                .size(14)
+                .text_color("#888888")
+                .margin_bottom(20);
 
-    let icon = ui::Element::new(ui::ElementType::P, Some(status_icon))
-        .size(48)
-        .text_color(icon_color);
+            let verify_button = build_icon_text_button_full(
+                "验证",
+                icons::api_tab_svg(),
+                UPGRADE_TO_PAID_EVENT,
+            ).bg("#0090FF").text_color("#FFFFFF");
 
-    // 标题
-    let title = ui::Element::new(ui::ElementType::P, Some("永昼天气同步器"))
-        .size(20)
-        .text_color("#FFFFFF");
+            root.child(title).child(subtitle).child(verify_button)
+        }
 
-    icon_section.child(icon).child(title);
+        VerificationStatus::CheckingDevice => {
+            // 检测设备链接
+            let title = ui::Element::new(ui::ElementType::P, Some("检测设备链接"))
+                .size(24)
+                .text_color("#FFFFFF")
+                .margin_bottom(8);
 
-    // 状态卡片
-    let status_card = ui::Element::new(ui::ElementType::Div, None)
+            let subtitle = ui::Element::new(ui::ElementType::P, Some("请选择您的设备"))
+                .size(14)
+                .text_color("#888888")
+                .margin_bottom(16);
+
+            // 设备信息卡片（如果有）
+            let device_card = if let Some(ref info) = state.device_info {
+                build_device_info_card_for_verification(info)
+            } else {
+                ui::Element::new(ui::ElementType::P, Some("正在搜索设备..."))
+                    .size(14)
+                    .text_color("#666666")
+            };
+
+            root.child(title).child(subtitle).child(device_card)
+        }
+
+        VerificationStatus::GettingAPIKey | VerificationStatus::GettingDeviceInfo => {
+            // 正在获取信息
+            let title = ui::Element::new(ui::ElementType::P, Some("正在获取信息"))
+                .size(24)
+                .text_color("#FFFFFF")
+                .margin_bottom(8);
+
+            let subtitle = ui::Element::new(ui::ElementType::P, Some("请稍后"))
+                .size(14)
+                .text_color("#888888");
+
+            root.child(title).child(subtitle)
+        }
+
+        VerificationStatus::WaitingPayment => {
+            // 设备激活
+            let title = ui::Element::new(ui::ElementType::P, Some("设备激活"))
+                .size(24)
+                .text_color("#FFFFFF")
+                .margin_bottom(8);
+
+            let you_device = ui::Element::new(ui::ElementType::P, Some("您选择的设备:"))
+                .size(14)
+                .text_color("#888888")
+                .margin_bottom(8);
+
+            // 设备信息卡片
+            let device_card = if let Some(ref info) = state.device_info {
+                build_device_info_card_for_verification(info)
+            } else {
+                ui::Element::new(ui::ElementType::P, Some("设备信息获取中..."))
+                    .size(14)
+                    .text_color("#666666")
+            };
+
+            let hint = ui::Element::new(ui::ElementType::P, Some("请通过以下方式激活您的设备"))
+                .size(14)
+                .text_color("#888888")
+                .margin_top(16)
+                .margin_bottom(12);
+
+            // 跳转支付按钮
+            let pay_button = build_icon_text_button_full(
+                "跳转至支付网页",
+                icons::more_link_svg(),
+                CHECK_PAYMENT_EVENT, // 点击跳转支付页
+            ).bg("#0090FF").text_color("#FFFFFF").margin_bottom(8);
+
+            // 免费版按钮
+            let free_button = build_icon_text_button_full(
+                "免费版",
+                icons::afd_svg(),
+                UPGRADE_TO_PAID_EVENT, // 暂时复用，实际需要免费版逻辑
+            ).bg("#4CAF50").text_color("#FFFFFF").margin_bottom(16);
+
+            // 已支付提示
+            let paid_hint = ui::Element::new(ui::ElementType::P, Some("已支付?"))
+                .size(14)
+                .text_color("#888888")
+                .margin_bottom(8);
+
+            // 验证支付按钮
+            let verify_button = build_icon_text_button_full(
+                "验证支付",
+                icons::refresh_auth_svg(),
+                CHECK_PAYMENT_EVENT,
+            ).bg("#FF9800").text_color("#FFFFFF");
+
+            root.child(title)
+                .child(you_device)
+                .child(device_card)
+                .child(hint)
+                .child(pay_button)
+                .child(free_button)
+                .child(paid_hint)
+                .child(verify_button)
+        }
+
+        VerificationStatus::VerifyingPayment => {
+            // 验证中
+            let title = ui::Element::new(ui::ElementType::P, Some("验证中,请稍后"))
+                .size(24)
+                .text_color("#FFFFFF")
+                .margin_bottom(8);
+
+            let subtitle = ui::Element::new(ui::ElementType::P, Some("正在验证您的订单,并下发Key至设备"))
+                .size(14)
+                .text_color("#888888");
+
+            root.child(title).child(subtitle)
+        }
+
+        VerificationStatus::Verified => {
+            // 一切就绪
+            let title = ui::Element::new(ui::ElementType::P, Some("一切就绪！"))
+                .size(24)
+                .text_color("#4CAF50")
+                .margin_bottom(8);
+
+            let subtitle = ui::Element::new(ui::ElementType::P, Some("开始使用吧"))
+                .size(14)
+                .text_color("#888888");
+
+            root.child(title).child(subtitle)
+        }
+
+        VerificationStatus::Failed => {
+            // 失败弹窗由 show_alert 处理，这里显示重试界面
+            let title = ui::Element::new(ui::ElementType::P, Some("验证失败"))
+                .size(24)
+                .text_color("#F44336")
+                .margin_bottom(8);
+
+            let subtitle = ui::Element::new(ui::ElementType::P, Some("请点击重试"))
+                .size(14)
+                .text_color("#888888")
+                .margin_bottom(20);
+
+            let retry_button = build_icon_text_button_full(
+                "重试",
+                icons::refresh_svg(),
+                UPGRADE_TO_PAID_EVENT,
+            ).bg("#0090FF").text_color("#FFFFFF");
+
+            root.child(title).child(subtitle).child(retry_button)
+        }
+    }
+}
+
+/// 构建验证流程中的设备信息卡片
+fn build_device_info_card_for_verification(info: &DeviceInfo) -> ui::Element {
+    let card = ui::Element::new(ui::ElementType::Div, None)
         .flex()
         .flex_direction(ui::FlexDirection::Column)
         .width_full()
         .bg("#1E1E1F")
         .radius(12)
         .padding(16)
-        .gap(12);
+        .gap(8);
 
-    let status_label_text = match state.verification_status {
-        VerificationStatus::NotStarted => "尚未验证",
-        VerificationStatus::CheckingDevice => "正在检测设备连接...",
-        VerificationStatus::GettingAPIKey => "正在获取APIKey...",
-        VerificationStatus::GettingDeviceInfo => "正在获取设备信息...",
-        VerificationStatus::WaitingPayment => "等待付款",
-        VerificationStatus::VerifyingPayment => "正在验证付款...",
-        VerificationStatus::Verified => "已验证",
-        VerificationStatus::Failed => "验证失败",
+    // 设备名
+    let name = if info.model.is_empty() {
+        info.brand.clone()
+    } else {
+        format!("{} {}", info.brand, info.model)
     };
-
-    let status_label = ui::Element::new(ui::ElementType::P, Some(status_label_text))
+    let name_label = ui::Element::new(ui::ElementType::P, Some(&name))
         .size(16)
-        .text_color(icon_color);
+        .text_color("#FFFFFF");
 
-    let status_desc = match state.verification_status {
-        VerificationStatus::NotStarted => "点击下方按钮开始验证设备",
-        VerificationStatus::WaitingPayment => "请完成付款后点击检查授权",
-        VerificationStatus::Failed => "请重试验证",
-        _ => "请稍候...",
-    };
-    let desc_label = ui::Element::new(ui::ElementType::P, Some(status_desc))
-        .size(14)
+    // 设备ID
+    let id_text = format!("ID: {}", info.deviceId);
+    let id_label = ui::Element::new(ui::ElementType::P, Some(&id_text))
+        .size(13)
         .text_color("#888888");
 
-    status_card.child(status_label).child(desc_label);
-
-    // 按钮区域
-    let button_section = ui::Element::new(ui::ElementType::Div, None)
-        .flex()
-        .flex_direction(ui::FlexDirection::Column)
-        .width_full()
-        .gap(12);
-
-    let button = match state.verification_status {
-        VerificationStatus::NotStarted | VerificationStatus::Failed => {
-            Some(build_icon_text_button_full(
-                "开始验证",
-                icons::api_tab_svg(),
-                UPGRADE_TO_PAID_EVENT,
-            ).bg("#0090FF").text_color("#FFFFFF"))
-        }
-        VerificationStatus::WaitingPayment => {
-            Some(build_icon_text_button_full(
-                "检查付款状态",
-                icons::refresh_svg(),
-                CHECK_PAYMENT_EVENT,
-            ).bg("#FF9800").text_color("#FFFFFF"))
-        }
-        VerificationStatus::CheckingDevice | VerificationStatus::GettingAPIKey | VerificationStatus::GettingDeviceInfo | VerificationStatus::VerifyingPayment => {
-            // 显示加载指示
-            let loading = ui::Element::new(ui::ElementType::P, Some("处理中..."))
-                .size(14)
-                .text_color("#888888")
-                .flex()
-                .align_center()
-                .justify_center()
-                .width_full()
-                .padding(14);
-            Some(loading)
-        }
-        _ => None,
-    };
-
-    let button_section = if let Some(btn) = button {
-        button_section.child(btn)
-    } else {
-        button_section
-    };
-
-    root.child(icon_section)
-        .child(status_card)
-        .child(button_section)
+    card.child(name_label).child(id_label)
 }
 
 fn build_weather_sync_ui(state: &UiState) -> ui::Element {
