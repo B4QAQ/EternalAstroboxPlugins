@@ -229,7 +229,9 @@ pub fn ui_event_processor(
         REFRESH_DEVICE_INFO_EVENT => refresh_device_info(),
         SELECT_CITY_DROPDOWN_EVENT => {
             let parsed_value = parse_event_value(event_payload);
+            tracing::info!("SELECT_CITY_DROPDOWN_EVENT: payload={}, parsed={}", event_payload, parsed_value);
             if let Ok(idx) = parsed_value.parse::<usize>() {
+                tracing::info!("Selecting city index: {}", idx);
                 select_sync_city(idx);
             }
         }

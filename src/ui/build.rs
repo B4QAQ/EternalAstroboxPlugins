@@ -32,6 +32,12 @@ pub fn build_main_ui() -> ui::Element {
         .width_full()
         .padding(20);
 
+    // 如果未验证，不显示Tab，直接显示验证界面
+    if !state.api_key_verified {
+        let verification_ui = build_verification_ui(&state);
+        return container.child(verification_ui);
+    }
+
     let tabs = build_tabs(&state);
     let content = match state.current_tab {
         MainTab::SyncData => build_sync_tab(&state),
@@ -366,9 +372,6 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         .width_full()
         .gap(8);
 
-    // 设备信息卡片（如果有）
-    let device_info_card = build_device_info_card(state);
-
     // 选择城市下拉菜单
     let city_label = ui::Element::new(ui::ElementType::P, Some("选择城市"))
         .size(15)
@@ -452,62 +455,11 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         ).bg("#0090FF26").text_color("#0090FF")
     };
 
-    root.child(device_info_card)
-        .child(city_label)
+    root.child(city_label)
         .child(city_select)
         .child(days_card)
         .child(alerts_card)
         .child(send_button)
-}
-
-/// 构建设备信息卡片（显示在同步数据页顶部）
-fn build_device_info_card(state: &UiState) -> ui::Element {
-    // 如果没有设备信息，显示提示
-    if state.device_info.is_none() {
-        let hint = ui::Element::new(ui::ElementType::P, Some("设备未连接"))
-            .size(13)
-            .text_color("#888888")
-            .margin_bottom(8);
-        return hint;
-    }
-
-    let info = state.device_info.as_ref().unwrap();
-
-    // 设备信息卡片：设备名 + 蓝牙地址（一行显示）
-    let card = ui::Element::new(ui::ElementType::Div, None)
-        .flex()
-        .flex_direction(ui::FlexDirection::Row)
-        .align_center()
-        .width_full()
-        .bg("#1E1E1F")
-        .radius(12)
-        .padding(12)
-        .margin_bottom(8);
-
-    // 设备名
-    let name = if info.model.is_empty() {
-        info.brand.clone()
-    } else {
-        format!("{} {}", info.brand, info.model)
-    };
-    let name_label = ui::Element::new(ui::ElementType::P, Some(&name))
-        .size(15)
-        .text_color("#FFFFFF");
-
-    let spacer = ui::Element::new(ui::ElementType::Div, None)
-        .flex_grow(1.0);
-
-    // 蓝牙地址
-    let addr = if info.btAddr.is_empty() {
-        "未知地址".to_string()
-    } else {
-        info.btAddr.clone()
-    };
-    let addr_label = ui::Element::new(ui::ElementType::P, Some(&addr))
-        .size(13)
-        .text_color("#888888");
-
-    card.child(name_label).child(spacer).child(addr_label)
 }
 
 // ========== 公告Tab ==========
@@ -1542,7 +1494,7 @@ fn build_icon_text_button_full(label: &str, icon_svg: String, event_id: &str) ->
 
 fn build_days_card(state: &UiState) -> ui::Element {
     let selected_text = format!("{}天", state.selected_days);
-    let options = [3u32, 7, 10, 15, 30];
+    let options = [7u32, 14, 30];
 
     let mut select = ui::Element::new(ui::ElementType::Select, Some(&selected_text))
         .on(ui::Event::Change, DAYS_DROPDOWN_EVENT)
@@ -1554,7 +1506,8 @@ fn build_days_card(state: &UiState) -> ui::Element {
 
     for day in options.iter() {
         let option_text = format!("{}天", day);
-        let option = ui::Element::new(ui::ElementType::Option, Some(&option_text));
+        let option = ui::Element::new(ui::ElementType::Option, Some(&option_text))
+            .prop("value", &day.to_string());
         select = select.child(option);
     }
 
