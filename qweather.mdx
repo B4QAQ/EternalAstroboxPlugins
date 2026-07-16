@@ -1,0 +1,250 @@
+---
+title: 和风天气模块
+icon: Cloud
+description: 天气预报、预警、城市信息、天气指数等服务
+---
+
+import { CloudIcon, WarningIcon, MapPinIcon, SunIcon } from "@phosphor-icons/react/dist/ssr";
+
+> 模块类型: service | 权限等级: verify 
+<Callout type="warn">
+需要应用启用`qweather`服务
+</Callout>
+
+---
+
+## 获取天气预报
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/3f/getWeather/:appname` |
+| **说明** | 获取天气预报数据 |
+
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名 |
+| `Key` | body | 是 | 设备 API Key |
+| `longitude` | body | 是 | 经度 |
+| `latitude` | body | 是 | 纬度 |
+| `days` | body | 否 | 预报天数（默认7，最大30） |
+| `lang` | body | 否 | 语言 |
+| `UTCoffset` | body | 否 | UTC 偏移量（小时，如 +8） |
+
+**返回：**
+```json
+{
+  "status": 200,
+  "result": [
+    { 
+      Date: '2026-07-06',
+      updateTime: '2026-07-06 19:55:43',
+      sunrise: '03:54',
+      sunset: '19:11',
+      moonrise: '22:16',
+      moonset: '10:06',
+      moonPhase: '亏凸月',
+      moonPhaseIcon: '805',
+      tempMax: '27',
+      tempMin: '18',
+      iconDay: '300',
+      textDay: '阵雨',
+      iconNight: '305',
+      textNight: '小雨',
+      humidity: '96',
+      precip: '0.6',
+      pressure: '943',
+      vis: '10',
+      uvIndex: '4',
+      hourly: 
+      [ 
+        { 
+          hours: '19',
+          temp: '21',
+          icon: '501',
+          text: '雾',
+          wind360: '135',
+          windDir: '东南风',
+          windScale: '5',
+          windSpeed: '35',
+          humidity: '85',
+          pop: '0',
+          precip: '0.0',
+          pressure: '945',
+          dew: '19',
+          feelsLike: '17',
+          air: 
+            { code: '优',
+              aqiDisplay: '25',
+              level: '1',
+              pollutants: 
+              [ { name: 'PM 2.5', value: 8, unit: 'μg/m³' },
+                { name: 'PM 10', value: 10, unit: 'μg/m³' },
+                { name: 'NO2', value: 1, unit: 'μg/m³' },
+                { name: 'O3', value: 79, unit: 'μg/m³' },
+                { name: 'SO2', value: 1, unit: 'μg/m³' },
+                { name: 'CO', value: 0.2, unit: 'mg/m³' } 
+              ]
+            } 
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 获取天气预警
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/3f/getWarn/:appname` |
+| **说明** | 获取天气预警信息 |
+
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名 |
+| `Key` | body | 是 | 设备 API Key |
+| `longitude` | body | 是 | 经度 |
+| `latitude` | body | 是 | 纬度 |
+| `lang` | body | 否 | 语言 |
+
+**返回：**
+```json
+{
+  "status": 200,
+  "result": [
+    {
+      "senderName": "北京市气象台",
+      "issuedTime": "2025-06-07 10:00:00",
+      "icon": "901",
+      "color": { "code": "orange" },
+      "expireTime": "2025-06-07 18:00:00",
+      "title": "暴雨橙色预警",
+      "headline": "预计未来6小时...",
+      "description": "...",
+      "criteria": "...",
+      "instruction": "..."
+    }
+  ]
+}
+```
+
+---
+
+## 获取城市信息
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/3f/getCity/:appname` |
+| **说明** | 获取城市信息列表 |
+
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名 |
+| `Key` | body | 是 | 设备 API Key |
+| `location` | body | 是 | 内容(文字/经纬度) |
+| `range` | body | 否 | 搜索范围 |
+| `number` | body | 否 | 返回结果数量 |
+
+**返回：**
+
+```json
+{
+  "status": 200,
+  "result": [
+    {
+      "name": "北京",
+      "lat": "39.90",
+      "lon": "116.41",
+      "adm2": "北京",
+      "adm1": "北京市",
+      "country": "中国"
+    }
+  ]
+}
+```
+
+---
+
+## 获取天气指数
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/3f/getIndices/:appname` |
+| **说明** | 获取天气生活指数预报 |
+<Callout type="info">
+新版Eternal已内置天气指数计算，无需请求此API
+</Callout>
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名 |
+| `Key` | body | 是 | 设备 API Key |
+| `longitude` | body | 是 | 经度 |
+| `latitude` | body | 是 | 纬度 |
+| `days` | body | 否 | 预报天数：`1d`（默认）或 `3d` |
+| `type` | body | 否 | 指数类型ID（`0`=全部） |
+
+**返回：**
+
+```json
+{
+  "status": 200,
+  "result": [
+    {
+      "Date": "2025-06-07",
+      "data": [
+        {
+          "name": "运动指数",
+          "level": "3",
+          "category": "较不宜",
+          "text": "天气较好，但考虑天气寒冷..."
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 获取分钟级降水
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/3f/getMinutely/:appname` |
+| **说明** | 获取分钟级降水预报 |
+<Callout type="warn">
+分钟级降水仅支持中华人民共和国
+</Callout>
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名 |
+| `Key` | body | 是 | 设备 API Key |
+| `longitude` | body | 是 | 经度 |
+| `latitude` | body | 是 | 纬度 |
+
+**返回：**
+
+```json
+{
+  "status": 200,
+  "result": {
+    "summary": "95分钟后雨就停了",
+    "start": "2025-06-07 10:00",
+    "end": "2025-06-07 12:00",
+    "type": "rain",
+    "minutely": ["0.15", "0.23", "0.21", "0.17", ...]
+  }
+}
+```

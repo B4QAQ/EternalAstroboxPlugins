@@ -1,0 +1,100 @@
+---
+title: 公告系统
+icon: Megaphone
+description: 获取系统和应用公告
+---
+
+> 模块类型: system | 权限等级: 无
+
+## 获取公告（通用）
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/notice` |
+| **说明** | 获取系统或应用公告 |
+
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | body | 否 | 应用名（不传或为空时默认 `API`，返回系统公告） |
+| `type` | body | 否 | 公告类型筛选（如 `info`、`warning`、`error`） |
+
+**返回：**
+
+```json
+{
+  "status": 200,
+  "result": [
+    {
+      "id": 1,
+      "title": "系统维护通知",
+      "time": "2025-06-07T00:00:00.000Z",
+      "content": "公告正文内容...",
+      "type": "info"
+    }
+  ]
+}
+```
+
+<Callout>
+系统公告（appname=API）返回字段：`id`、`title`、`time`、`content`、`type`
+
+应用公告额外返回 `pinned` 字段（布尔值，表示是否置顶）
+</Callout>
+
+---
+
+## 获取指定应用公告
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/notice/:appname` |
+| **说明** | 获取指定应用的公告列表 |
+
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名（`API` 返回系统公告） |
+| `type` | body | 否 | 公告类型筛选 |
+
+**返回：**
+
+```json
+{
+  "status": 200,
+  "result": [
+    {
+      "id": 1,
+      "title": "新版本发布",
+      "time": "2025-06-07T00:00:00.000Z",
+      "content": "版本 2.0 已发布...",
+      "type": "info",
+      "pinned": true
+    },
+    {
+      "id": 2,
+      "title": "功能更新",
+      "time": "2025-06-06T00:00:00.000Z",
+      "content": "新增天气预警功能...",
+      "type": "info",
+      "pinned": false
+    }
+  ]
+}
+```
+
+---
+
+## 数据来源
+
+| appname | 数据表 | 说明 |
+|---------|--------|------|
+| `API` 或空 | `system_notices` | 系统公告 |
+| 其他应用名 | `{appname}_notice` | 应用专属公告 |
+
+**排序规则：**
+
+- 系统公告：按创建时间倒序 (`createdAt DESC`)
+- 应用公告：置顶优先，然后按创建时间倒序 (`pinned DESC, createdAt DESC`)

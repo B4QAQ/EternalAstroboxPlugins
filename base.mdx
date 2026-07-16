@@ -1,0 +1,134 @@
+---
+title: 设备验证模块
+icon: Key
+description: 设备验证、获取设备信息等基础功能
+---
+
+> 模块类型: system | 权限等级: 无
+
+## 设备验证
+
+### 设备验证（V2）
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `GET /api/v2/verify/:appname?data=xxx` |
+| **说明** | 设备验证，生成设备 Key 并重定向到爱发电支付页面 |
+
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名 |
+| `data` | query | 是 | 设备数据，格式：`设备名.设备ID.唯一ID.时间戳`（URL编码） |
+
+**返回：** 302 重定向到 `orderURL`(自动填写Remark备注)
+
+---
+
+### 验证检查
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `GET /api/v2/verifyCheck/:appname?data=xxx&type=xxx` |
+| **说明** | 检查设备授权状态，返回签名后的 APIKey |
+
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名 |
+| `data` | query | 是 | 加密数据 |
+| `type` | query | 否 | 验证类型 |
+<Callout type="warn">
+type当前只支持normal和free，如果用户选择免费版，则必须携带type=free参数
+</Callout>
+
+**返回：**
+
+```json
+{
+  "status": 200,
+  "result": {
+    "APIKey": "设备密钥",
+    "signature": "签名"
+  }
+}
+```
+**验证：**
+
+---
+
+### 获取设备信息
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/getInfo/:appname` |
+| **说明** | 获取设备详细信息（状态、请求数等） |
+
+**参数：**
+
+| 参数 | 位置 | 必填 | 说明 |
+|------|------|------|------|
+| `appname` | path | 是 | 应用名 |
+| `Key` | body | 是 | 设备 API Key |
+
+**返回：** 根据应用 `billingMode` 返回不同字段
+
+**通用字段：**
+
+```json
+{
+  "id": "1",
+  "deviceID": "ABC123",
+  "DeviceName": "设备1",
+  "onlyID": "unique-id",
+  "regdate": "2025-01-01",
+  "userType": "normal",
+  "billingMode": "normal"
+}
+```
+
+**买断制：**
+
+```json
+{ "...通用字段", "ALLRequests": "500", "UseRequests": "100", "FreeRequests": "400" }
+```
+
+**订阅制：**
+
+```json
+{ "...通用字段", expiredAt": "Sub_2025-12-31" }
+```
+**按量制：**
+
+```json
+{ "...通用字段", "remainingAmount": "25.5" }
+```
+
+<Callout>
+Key 无效时返回 `status: 201`
+</Callout>
+
+---
+
+### 获取服务器时间
+
+| 项目 | 内容 |
+|------|------|
+| **API** | `POST /api/v2/getTime` |
+| **说明** | 获取服务器当前时间 |
+
+**无参数**
+
+**返回：**
+
+```json
+{
+  "status": 200,
+  "result": {
+    "timestamp": 1717728000,
+    "time": "2025-06-07T00:00:00.000Z"
+  }
+}
+```
