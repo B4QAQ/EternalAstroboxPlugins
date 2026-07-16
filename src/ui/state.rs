@@ -181,7 +181,7 @@ pub fn ui_state() -> &'static RwLock<UiState> {
             verification_status: VerificationStatus::NotStarted,
 
             sync_alerts_enabled: default_bool_true(),
-            selected_days: 14,
+            selected_days: 7,
 
             city_list: Vec::new(),
             selected_city_index: None,
