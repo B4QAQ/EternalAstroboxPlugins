@@ -221,13 +221,14 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         let option = ui::Element::new(ui::ElementType::Option, Some("请先添加城市"));
         city_select = city_select.child(option);
     } else {
-        for city in &state.city_list {
+        for (idx, city) in state.city_list.iter().enumerate() {
             let label = if city.adm1.is_empty() {
                 city.name.clone()
             } else {
                 format!("{} · {}", city.name, city.adm1)
             };
-            let option = ui::Element::new(ui::ElementType::Option, Some(&label));
+            let option = ui::Element::new(ui::ElementType::Option, Some(&label))
+                .prop("value", &idx.to_string());
             city_select = city_select.child(option);
         }
     }
