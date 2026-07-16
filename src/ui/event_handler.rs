@@ -213,8 +213,10 @@ pub fn ui_event_processor(
             crate::ui::build::rerender_main_ui();
         }
         TOGGLE_SEARCH_RESULTS_EVENT => {
-            let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
-            state.search_results_expanded = !state.search_results_expanded;
+            {
+                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.search_results_expanded = !state.search_results_expanded;
+            }
             crate::ui::build::rerender_main_ui();
         }
         CHECK_PAYMENT_EVENT => check_payment_status(),
@@ -925,9 +927,20 @@ async fn ensure_app_launched(device_addr: &str) -> bool {
 fn request_citylist_from_device() {
     tracing::info!("请求城市列表...");
     wit_bindgen::block_on(async move {
-        if let Some(device_addr) = get_device_addr().await {
-            let payload = serde_json::json!({ "type": "GET_CITYLIST" }).to_string();
-            send_interconnect_message(&device_addr, &payload).await;
+        match get_device_addr().await {
+            Some(device_addr) => {
+                let payload = serde_json::json!({ "type": "GET_CITYLIST" }).to_string();
+                send_interconnect_message(&device_addr, &payload).await;
+            }
+            None => {
+                // 没有连接设备，重置加载状态并提示
+                {
+                    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.city_list_loading = false;
+                }
+                show_alert("提示", "没有连接的设备");
+                crate::ui::build::rerender_main_ui();
+            }
         }
     });
 }
