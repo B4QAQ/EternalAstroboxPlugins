@@ -69,3 +69,8 @@ pub fn send_tab_svg() -> String {
 pub fn refresh_svg() -> String {
     r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M216,128a88,88,0,1,1-88-88" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><polyline points="216 40 216 96 160 96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>"#.to_string()
 }
+
+/// 公告/喇叭图标
+pub fn notice_svg() -> String {
+    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M224,120V72a8,8,0,0,0-10.27-7.67L39.73,111.06A16,16,0,0,0,24,126.81v10.38a16,16,0,0,0,15.73,15.75L80,153.28V184a24,24,0,0,0,24,24h0a24,24,0,0,0,24-24V161.44l85.73,22.23A8,8,0,0,0,224,176V128" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><path d="M152,183.68V192a24,24,0,0,1-24,24h0a24,24,0,0,1-24-24V184" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>"#.to_string()
+}

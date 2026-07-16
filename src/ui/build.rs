@@ -36,6 +36,7 @@ pub fn build_main_ui() -> ui::Element {
     let content = match state.current_tab {
         MainTab::SyncData => build_sync_tab(&state),
         MainTab::CityManage => build_city_manage_tab(&state),
+        MainTab::Notice => build_notice_tab(&state),
         MainTab::Settings => build_settings_tab(&state),
     };
 
@@ -86,6 +87,13 @@ fn build_tabs(state: &UiState) -> ui::Element {
         TAB_CITY_EVENT,
     );
 
+    let notice_trigger = build_tab_trigger(
+        "公告",
+        icons::notice_svg(),
+        state.current_tab == MainTab::Notice,
+        TAB_NOTICE_EVENT,
+    );
+
     let settings_trigger = build_tab_trigger(
         "设置",
         icons::api_tab_svg(),
@@ -94,7 +102,7 @@ fn build_tabs(state: &UiState) -> ui::Element {
     );
 
     tabs_root
-        .child(tabs_list.child(sync_trigger).child(city_trigger).child(settings_trigger))
+        .child(tabs_list.child(sync_trigger).child(city_trigger).child(notice_trigger).child(settings_trigger))
 }
 
 fn build_tab_trigger(label: &str, icon_svg: String, is_active: bool, event_id: &str) -> ui::Element {
@@ -254,6 +262,207 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         .child(days_card)
         .child(alerts_card)
         .child(send_button)
+}
+
+// ========== 公告Tab ==========
+
+fn build_notice_tab(state: &UiState) -> ui::Element {
+    let root = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .width_full()
+        .gap(8);
+
+    // 刷新按钮
+    let refresh_row = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .justify_end()
+        .width_full()
+        .margin_bottom(8);
+
+    let refresh_text = if state.notice_loading { "刷新中..." } else { "刷新" };
+    let refresh_btn = ui::Element::new(ui::ElementType::Button, Some(refresh_text))
+        .without_default_styles()
+        .on(ui::Event::Click, REFRESH_NOTICE_EVENT)
+        .bg("#2A2A2A")
+        .text_color("#FFFFFF")
+        .radius(8)
+        .padding_left(12)
+        .padding_right(12)
+        .padding_top(6)
+        .padding_bottom(6)
+        .size(14);
+
+    let refresh_row = refresh_row.child(refresh_btn);
+
+    // 公告列表
+    let content = if state.notice_loading {
+        ui::Element::new(ui::ElementType::P, Some("加载中..."))
+            .size(14)
+            .text_color("#888888")
+            .margin_top(20)
+    } else if state.notice_list.is_empty() {
+        ui::Element::new(ui::ElementType::P, Some("暂无公告"))
+            .size(14)
+            .text_color("#888888")
+            .margin_top(20)
+    } else {
+        let mut container = ui::Element::new(ui::ElementType::Div, None)
+            .flex()
+            .flex_direction(ui::FlexDirection::Column)
+            .gap(12);
+
+        for notice in &state.notice_list {
+            let card = build_notice_card(notice);
+            container = container.child(card);
+        }
+        container
+    };
+
+    root.child(refresh_row).child(content)
+}
+
+/// 构建单个公告卡片
+fn build_notice_card(notice: &NoticeInfo) -> ui::Element {
+    let card = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .width_full()
+        .bg("#1E1E1F")
+        .radius(12)
+        .padding(12)
+        .gap(8);
+
+    // 标题行：标题 + 类型标签
+    let title_row = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
+        .width_full()
+        .gap(8);
+
+    let title_text = ui::Element::new(ui::ElementType::P, Some(&notice.title))
+        .size(15)
+        .flex_shrink(0.0);
+
+    let spacer = ui::Element::new(ui::ElementType::Div, None)
+        .flex_grow(1.0);
+
+    // 类型标签颜色
+    let type_color = match notice.notice_type.as_str() {
+        "warning" => "#FF9800",
+        "error" => "#F44336",
+        _ => "#2196F3", // info
+    };
+    let type_bg = match notice.notice_type.as_str() {
+        "warning" => "#FF980026",
+        "error" => "#F4433626",
+        _ => "#2196F326",
+    };
+    let type_label = ui::Element::new(ui::ElementType::Span, Some(&notice.notice_type))
+        .bg(type_bg)
+        .text_color(type_color)
+        .radius(4)
+        .padding_left(6)
+        .padding_right(6)
+        .padding_top(2)
+        .padding_bottom(2)
+        .size(12);
+
+    // 时间
+    let time_text = ui::Element::new(ui::ElementType::P, Some(&notice.time))
+        .size(12)
+        .text_color("#888888");
+
+    // 内容（解析特殊格式）
+    let segments = parse_notice_content(&notice.content);
+    let mut content_container = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .gap(4);
+
+    for segment in segments {
+        let seg_el = match segment {
+            NoticeSegment::Text { text } => {
+                ui::Element::new(ui::ElementType::P, Some(&text))
+                    .size(14)
+                    .text_color("#CCCCCC")
+            }
+            NoticeSegment::Image { url, alt } => {
+                // 图片显示为可点击链接
+                let img_link = ui::Element::new(ui::ElementType::Span, Some(&format!("[图片: {}]", alt)))
+                    .text_color("#0090FF")
+                    .size(14);
+                // TODO: 点击打开图片
+                img_link
+            }
+            NoticeSegment::QrCode { url, alt } => {
+                // 二维码显示为可点击链接
+                let qr_link = ui::Element::new(ui::ElementType::Span, Some(&format!("[二维码: {}]", alt)))
+                    .text_color("#0090FF")
+                    .size(14);
+                // TODO: 点击显示二维码
+                qr_link
+            }
+        };
+        content_container = content_container.child(seg_el);
+    }
+
+    card.child(title_row.child(title_text).child(spacer).child(type_label))
+        .child(time_text)
+        .child(content_container)
+}
+
+/// 解析公告内容，提取文本、图片、二维码
+fn parse_notice_content(content: &str) -> Vec<NoticeSegment> {
+    use regex::Regex;
+
+    let mut segments = Vec::new();
+    // 匹配 [IMG:url,alt] 或 [QR:url,alt] 或 [QRCODE:url,alt]
+    let re = Regex::new(r"\[(?:QR(?:CODE)?:|IMG:)\s*([^,\]]+?)\s*,\s*([^,\]]+?)\s*\]").unwrap();
+
+    let mut last_end = 0;
+    for cap in re.captures_iter(content) {
+        let full_match = cap.get(0).unwrap();
+
+        // 匹配前的文本
+        if full_match.start() > last_end {
+            let text = &content[last_end..full_match.start()];
+            if !text.is_empty() {
+                segments.push(NoticeSegment::Text { text: text.to_string() });
+            }
+        }
+
+        // 匹配的内容
+        let full_text = full_match.as_str();
+        let is_img = full_text.starts_with("[IMG");
+        let url = cap[1].trim().to_string();
+        let alt = cap[2].trim().to_string();
+
+        if is_img {
+            segments.push(NoticeSegment::Image { url, alt });
+        } else {
+            segments.push(NoticeSegment::QrCode { url, alt });
+        }
+
+        last_end = full_match.end();
+    }
+
+    // 剩余文本
+    if last_end < content.len() {
+        let text = &content[last_end..];
+        if !text.is_empty() {
+            segments.push(NoticeSegment::Text { text: text.to_string() });
+        }
+    }
+
+    // 如果没有特殊格式，直接返回原文
+    if segments.is_empty() {
+        segments.push(NoticeSegment::Text { text: content.to_string() });
+    }
+
+    segments
 }
 
 // ========== 城市管理Tab ==========

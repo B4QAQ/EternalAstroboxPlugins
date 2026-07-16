@@ -35,7 +35,29 @@ fn default_bool_true() -> bool {
 pub enum MainTab {
     SyncData,
     CityManage,
+    Notice,
     Settings,
+}
+
+/// 公告信息
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct NoticeInfo {
+    pub id: u32,
+    pub title: String,
+    pub time: String,
+    pub content: String,
+    #[serde(default)]
+    pub notice_type: String,
+    #[serde(default)]
+    pub pinned: bool,
+}
+
+/// 公告内容片段（支持文本、图片、二维码）
+#[derive(Clone, Debug)]
+pub enum NoticeSegment {
+    Text { text: String },
+    Image { url: String, alt: String },
+    QrCode { url: String, alt: String },
 }
 
 /// 设备信息结构（只保留验证和显示需要的字段）
@@ -110,6 +132,10 @@ pub struct UiState {
     // 同步状态
     pub last_sync_time_ms: u64,
     pub last_sync_location: String,
+
+    // 公告
+    pub notice_list: Vec<NoticeInfo>,
+    pub notice_loading: bool,
 }
 
 /// 验证状态
@@ -163,6 +189,9 @@ pub fn ui_state() -> &'static RwLock<UiState> {
 
             last_sync_time_ms: 0,
             last_sync_location: String::new(),
+
+            notice_list: Vec::new(),
+            notice_loading: false,
         };
         RwLock::new(state)
     })

@@ -12,6 +12,7 @@ use urlencoding::encode;
 pub const SEND_BUTTON_EVENT: &str = "send_button";
 pub const TAB_SYNC_EVENT: &str = "tab_sync";
 pub const TAB_CITY_EVENT: &str = "tab_city";
+pub const TAB_NOTICE_EVENT: &str = "tab_notice";
 pub const TAB_SETTINGS_EVENT: &str = "tab_settings";
 pub const ALERTS_SYNC_TOGGLE_EVENT: &str = "alerts_sync_toggle";
 pub const OPEN_HELP_DOC_EVENT: &str = "open_help_doc";
@@ -31,6 +32,7 @@ pub const SEARCH_CITY_BUTTON_EVENT: &str = "search_city_button";
 pub const SEARCH_RANGE_EVENT: &str = "search_range";
 pub const SEARCH_NUMBER_EVENT: &str = "search_number";
 pub const TOGGLE_SEARCH_RESULTS_EVENT: &str = "toggle_search_results";
+pub const REFRESH_NOTICE_EVENT: &str = "refresh_notice";
 
 // ========== Interconnect消息处理 ==========
 
@@ -138,10 +140,12 @@ pub fn ui_event_processor(
         SEND_BUTTON_EVENT => send_weather_data(),
         TAB_SYNC_EVENT => switch_tab(MainTab::SyncData),
         TAB_CITY_EVENT => switch_tab(MainTab::CityManage),
+        TAB_NOTICE_EVENT => switch_tab(MainTab::Notice),
         TAB_SETTINGS_EVENT => switch_tab(MainTab::Settings),
         OPEN_HELP_DOC_EVENT => open_help_doc_page(),
         OPEN_QQ_GROUP_EVENT => open_qq_group_page(),
         ALERTS_SYNC_TOGGLE_EVENT => toggle_alerts_sync(),
+        REFRESH_NOTICE_EVENT => fetch_notice_list(),
         DAYS_DROPDOWN_EVENT => {
             let parsed_value = parse_event_value(event_payload);
             if let Some(day_str) = parsed_value.strip_suffix('天') {
@@ -1147,5 +1151,69 @@ fn show_alert(title: &str, message: &str) {
                 }],
             },
         ).await;
+    });
+}
+
+// ========== 公告 ==========
+
+/// 获取公告列表
+fn fetch_notice_list() {
+    tracing::info!("获取公告列表...");
+
+    // 检查是否已经在加载中
+    {
+        let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.notice_loading {
+            tracing::info!("公告正在加载中，忽略重复请求");
+            return;
+        }
+    }
+
+    // 设置加载状态
+    {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.notice_loading = true;
+    }
+    crate::ui::build::rerender_main_ui();
+
+    wit_bindgen::block_on(async move {
+        // 先获取系统公告，再获取应用公告
+        let url = format!("{}/api/v2/notice/Eternal", server_api_base());
+        let body = serde_json::json!({});
+
+        match super::api_client::post_json_no_auth(&url, &body) {
+            Ok(json) => {
+                tracing::info!("notice response: {:?}", json);
+                let result = json.get("result").unwrap_or(&json);
+                let notices: Vec<NoticeInfo> = if let Some(arr) = result.as_array() {
+                    arr.iter().filter_map(|n| {
+                        Some(NoticeInfo {
+                            id: n.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                            title: n.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            time: n.get("time").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            content: n.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            notice_type: n.get("type").and_then(|v| v.as_str()).unwrap_or("info").to_string(),
+                            pinned: n.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false),
+                        })
+                    }).collect()
+                } else {
+                    Vec::new()
+                };
+
+                {
+                    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.notice_list = notices;
+                    state.notice_loading = false;
+                }
+            }
+            Err(e) => {
+                tracing::error!("获取公告失败: {}", e);
+                {
+                    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.notice_loading = false;
+                }
+            }
+        }
+        crate::ui::build::rerender_main_ui();
     });
 }
