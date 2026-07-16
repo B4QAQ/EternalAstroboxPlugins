@@ -288,7 +288,14 @@ fn build_city_manage_tab(state: &UiState) -> ui::Element {
     let spacer = ui::Element::new(ui::ElementType::Div, None)
         .flex_grow(1.0); // 占据剩余空间
 
-    let refresh_button = ui::Element::new(ui::ElementType::Button, Some("刷新"))
+    // 刷新按钮（根据加载状态显示不同文字）
+    let refresh_text = if state.city_list_loading {
+        "刷新中..."
+    } else {
+        "刷新"
+    };
+
+    let refresh_button = ui::Element::new(ui::ElementType::Button, Some(refresh_text))
         .without_default_styles()
         .on(ui::Event::Click, GET_CITYLIST_EVENT)
         .bg("#2A2A2A")
@@ -351,13 +358,16 @@ fn build_city_item(city: &CityInfo, idx: usize, is_selected: bool) -> ui::Elemen
         .flex()
         .flex_direction(ui::FlexDirection::Row)
         .align_center()
-        .width_full();
+        .width_full()
+        .gap(8);
 
     let name_text = ui::Element::new(ui::ElementType::P, Some(&city.name))
         .size(15)
-        .text_color(if is_selected { "#0090FF" } else { "#FFFFFF" });
+        .text_color(if is_selected { "#0090FF" } else { "#FFFFFF" })
+        .flex_shrink(0.0); // 防止被压缩
 
-    let spacer1 = ui::Element::new(ui::ElementType::Div, None).width_full();
+    let spacer1 = ui::Element::new(ui::ElementType::Div, None)
+        .flex_grow(1.0); // 占据剩余空间
 
     // 排序按钮
     let order_up = ui::Element::new(ui::ElementType::Button, Some("↑"))
@@ -370,7 +380,8 @@ fn build_city_item(city: &CityInfo, idx: usize, is_selected: bool) -> ui::Elemen
         .padding_right(10)
         .padding_top(4)
         .padding_bottom(4)
-        .size(12);
+        .size(12)
+        .flex_shrink(0.0);
 
     let order_down = ui::Element::new(ui::ElementType::Button, Some("↓"))
         .without_default_styles()
@@ -383,7 +394,8 @@ fn build_city_item(city: &CityInfo, idx: usize, is_selected: bool) -> ui::Elemen
         .padding_right(10)
         .padding_top(4)
         .padding_bottom(4)
-        .size(12);
+        .size(12)
+        .flex_shrink(0.0);
 
     // 第二行: adm1 adm2 + 删除按钮
     let row2 = ui::Element::new(ui::ElementType::Div, None)
@@ -391,7 +403,8 @@ fn build_city_item(city: &CityInfo, idx: usize, is_selected: bool) -> ui::Elemen
         .flex_direction(ui::FlexDirection::Row)
         .align_center()
         .width_full()
-        .margin_top(8);
+        .margin_top(8)
+        .gap(8);
 
     let adm_text = if city.adm1.is_empty() {
         "".to_string()
@@ -403,9 +416,11 @@ fn build_city_item(city: &CityInfo, idx: usize, is_selected: bool) -> ui::Elemen
 
     let adm_label = ui::Element::new(ui::ElementType::P, Some(&adm_text))
         .size(13)
-        .text_color("#888888");
+        .text_color("#888888")
+        .flex_shrink(0.0); // 防止被压缩
 
-    let spacer2 = ui::Element::new(ui::ElementType::Div, None).width_full();
+    let spacer2 = ui::Element::new(ui::ElementType::Div, None)
+        .flex_grow(1.0); // 占据剩余空间
 
     let delete_btn = ui::Element::new(ui::ElementType::Button, Some("删除"))
         .without_default_styles()
@@ -417,7 +432,8 @@ fn build_city_item(city: &CityInfo, idx: usize, is_selected: bool) -> ui::Elemen
         .padding_right(10)
         .padding_top(4)
         .padding_bottom(4)
-        .size(12);
+        .size(12)
+        .flex_shrink(0.0);
 
     item.child(row1.child(name_text).child(spacer1).child(order_up).child(order_down))
         .child(row2.child(adm_label).child(spacer2).child(delete_btn))
@@ -435,15 +451,21 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
     // 授权状态标题
     let auth_title = build_section_title("授权状态");
 
-    // APIKey状态卡片（显示验证状态和APIKey）
+    // 第一个卡片：APIKey状态 + 显示/隐藏
     let api_key_card = build_apikey_status_card(state);
+
+    // 第二个卡片：请求用量 + 进度条
+    let usage_card = build_usage_card(state);
 
     // 从服务器获取的设备信息
     let mut info_cards = Vec::new();
 
     if let Some(ref info) = state.server_device_info {
+        // API返回的是 {"status":200, "result": {...}}，需要先提取result
+        let result = info.get("result").unwrap_or(info);
+
         // userType
-        if let Some(user_type) = info.get("userType").and_then(|v| v.as_str()) {
+        if let Some(user_type) = result.get("userType").and_then(|v| v.as_str()) {
             // 如果是免费版，显示升级按钮
             if user_type == "free" {
                 let upgrade_card = build_settings_card(
@@ -458,7 +480,7 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         }
 
         // billingMode
-        if let Some(billing_mode) = info.get("billingMode").and_then(|v| v.as_str()) {
+        if let Some(billing_mode) = result.get("billingMode").and_then(|v| v.as_str()) {
             let mode_card = build_settings_card(
                 icons::hash_svg(),
                 "计费模式",
@@ -470,7 +492,7 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         }
 
         // 到期时间（订阅制）
-        if let Some(expired_at) = info.get("expiredAt").and_then(|v| v.as_str()) {
+        if let Some(expired_at) = result.get("expiredAt").and_then(|v| v.as_str()) {
             let expire_card = build_settings_card(
                 icons::calendar_svg(),
                 "到期时间",
@@ -482,7 +504,7 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         }
 
         // 剩余金额（按量制）
-        if let Some(remaining) = info.get("remainingAmount").and_then(|v| v.as_str()) {
+        if let Some(remaining) = result.get("remainingAmount").and_then(|v| v.as_str()) {
             let remain_card = build_settings_card(
                 icons::afd_svg(),
                 "剩余金额",
@@ -560,7 +582,8 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
 
     let mut root = root
         .child(auth_title)
-        .child(api_key_card);
+        .child(api_key_card)
+        .child(usage_card);
 
     for card in info_cards {
         root = root.child(card);
@@ -579,14 +602,15 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
 
 /// 构建APIKey状态卡片
 fn build_apikey_status_card(state: &UiState) -> ui::Element {
-    let container = ui::Element::new(ui::ElementType::Div, None)
+    // 第一个卡片：APIKey状态 + 显示/隐藏
+    let card1 = ui::Element::new(ui::ElementType::Div, None)
         .flex()
         .flex_direction(ui::FlexDirection::Column)
         .width_full()
         .bg("#1E1E1F")
         .radius(12)
         .padding(12)
-        .gap(10);
+        .gap(8);
 
     // 第一行：APIKey状态 + 已验证/未验证
     let row1 = ui::Element::new(ui::ElementType::Div, None)
@@ -598,29 +622,27 @@ fn build_apikey_status_card(state: &UiState) -> ui::Element {
 
     let status_label = ui::Element::new(ui::ElementType::P, Some("APIKey状态"))
         .size(15)
-        .flex_shrink(0.0); // 防止被压缩
+        .flex_shrink(0.0);
 
     let spacer1 = ui::Element::new(ui::ElementType::Div, None)
-        .flex_grow(1.0); // 占据剩余空间
+        .flex_grow(1.0);
 
     let (status_text, status_color) = if state.api_key_verified {
-        ("已验证", "#00FF00") // 绿色
+        ("已验证", "#00FF00")
     } else {
-        ("未验证", "#FF4444") // 红色
+        ("未验证", "#FF4444")
     };
 
     let status_value = ui::Element::new(ui::ElementType::P, Some(status_text))
         .size(15)
         .text_color(status_color)
-        .flex_shrink(0.0); // 防止被压缩
+        .flex_shrink(0.0);
 
-    // 第二行：APIKey显示/隐藏（可点击切换）
+    // 第二行：APIKey显示/隐藏（可点击）
     let row2 = if state.api_key_verified && !state.api_key.is_empty() {
-        // 根据可见状态显示APIKey或星号
         let api_key_display = if state.api_key_visible {
-            state.api_key.clone() // 直接显示原始APIKey
+            state.api_key.clone()
         } else {
-            // 32位连续星号
             "********************************".to_string()
         };
 
@@ -631,15 +653,12 @@ fn build_apikey_status_card(state: &UiState) -> ui::Element {
         };
 
         let api_key_text = ui::Element::new(ui::ElementType::P, Some(&api_key_display))
-            .size(13)
-            .text_color("#888888")
-            .margin_bottom(4);
+            .size(12)
+            .text_color("#888888");
 
         let hint_label = ui::Element::new(ui::ElementType::P, Some(hint_text))
-            .size(12)
-            .text_color("#666666");
+            .size(12);
 
-        // 整个区域可点击
         ui::Element::new(ui::ElementType::Div, None)
             .flex()
             .flex_direction(ui::FlexDirection::Column)
@@ -651,70 +670,77 @@ fn build_apikey_status_card(state: &UiState) -> ui::Element {
         ui::Element::new(ui::ElementType::Div, None)
     };
 
-    // 第三行：请求用量 + 进度条（仅当有数据时显示）
-    let row3 = if let Some(ref info) = state.server_device_info {
-        // 买断制显示请求用量
-        if let Some(all_req_str) = info.get("ALLRequests").and_then(|v| v.as_str()) {
-            let used_req = info.get("UseRequests").and_then(|v| v.as_str()).unwrap_or("0");
+    card1.child(row1.child(status_label).child(spacer1).child(status_value))
+        .child(row2)
+}
+
+/// 构建请求用量卡片
+fn build_usage_card(state: &UiState) -> ui::Element {
+    let container = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .width_full()
+        .bg("#1E1E1F")
+        .radius(12)
+        .padding(12)
+        .gap(8);
+
+    // 如果有请求用量数据
+    if let Some(ref info) = state.server_device_info {
+        // API返回的是 {"status":200, "result": {...}}，需要先提取result
+        let result = info.get("result").unwrap_or(info);
+
+        if let Some(all_req_str) = result.get("ALLRequests").and_then(|v| v.as_str()) {
+            let used_req = result.get("UseRequests").and_then(|v| v.as_str()).unwrap_or("0");
             let all_req: f64 = all_req_str.parse().unwrap_or(0.0);
             let used: f64 = used_req.parse().unwrap_or(0.0);
 
-            let usage_text = format!("请求用量：{} / {}", used_req, all_req_str);
+            let usage_text = format!("{} / {}", used_req, all_req_str);
 
-            let usage_row = ui::Element::new(ui::ElementType::Div, None)
+            // 第一行：请求用量 + 数值
+            let row1 = ui::Element::new(ui::ElementType::Div, None)
                 .flex()
                 .flex_direction(ui::FlexDirection::Row)
                 .align_center()
                 .width_full()
-                .margin_top(4);
+                .gap(8);
 
-            let usage_label = ui::Element::new(ui::ElementType::P, Some(&usage_text))
-                .size(13)
-                .text_color("#BBBBBB");
+            let usage_label = ui::Element::new(ui::ElementType::P, Some("请求用量："))
+                .size(15)
+                .flex_shrink(0.0);
 
-            // 进度条容器（使用flex布局）
-            let progress_container = ui::Element::new(ui::ElementType::Div, None)
-                .flex()
+            let spacer = ui::Element::new(ui::ElementType::Div, None)
+                .flex_grow(1.0);
+
+            let usage_value = ui::Element::new(ui::ElementType::P, Some(&usage_text))
+                .size(15)
+                .text_color("#BBBBBB")
+                .flex_shrink(0.0);
+
+            // 进度条
+            let progress_percent = if all_req > 0.0 {
+                ((used / all_req * 100.0).min(100.0) as u32).to_string()
+            } else {
+                "0".to_string()
+            };
+
+            let progress_bar = ui::Element::new(ui::ElementType::Progress, None)
                 .width_full()
-                .height(6)
-                .bg("#2A2A2A")
-                .radius(3)
-                .margin_top(6);
+                .height(15)
+                .prop("value", &progress_percent);
 
-            // 进度条前景（使用flex-grow来控制宽度比例）
-            let remaining_percent = if all_req > 0.0 { 100.0 - (used / all_req * 100.0) } else { 0.0 };
-            let used_flex = if all_req > 0.0 { (used / all_req * 100.0) as f32 } else { 0.0 };
-            let remaining_flex = remaining_percent as f32;
-
-            let progress_bar = ui::Element::new(ui::ElementType::Div, None)
-                .flex()
-                .flex_grow(used_flex)
-                .height_full()
-                .bg("#0090FF")
-                .radius(3);
-
-            let progress_remaining = ui::Element::new(ui::ElementType::Div, None)
-                .flex()
-                .flex_grow(remaining_flex)
-                .height_full();
-
-            ui::Element::new(ui::ElementType::Div, None)
-                .flex()
-                .flex_direction(ui::FlexDirection::Column)
-                .width_full()
-                .child(usage_row.child(usage_label))
-                .child(progress_container.child(progress_bar).child(progress_remaining))
-        } else {
-            ui::Element::new(ui::ElementType::Div, None)
+            return container
+                .child(row1.child(usage_label).child(spacer).child(usage_value))
+                .child(progress_bar);
         }
-    } else {
-        ui::Element::new(ui::ElementType::Div, None)
-    };
+    }
 
-    container
-        .child(row1.child(status_label).child(spacer1).child(status_value))
-        .child(row2)
-        .child(row3)
+    // 没有数据时显示提示
+    let hint = ui::Element::new(ui::ElementType::P, Some("请先验证设备获取用量信息"))
+        .size(13)
+        .text_color("#888888");
+
+    container.child(hint)
 }
 
 // ========== 辅助函数 ==========

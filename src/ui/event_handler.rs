@@ -147,7 +147,24 @@ pub fn ui_event_processor(
             }
         }
         GET_CITYLIST_EVENT => {
+            // 检查是否已经在加载中
+            let is_loading = {
+                let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.city_list_loading
+            };
+
+            if is_loading {
+                tracing::info!("城市列表正在加载中，忽略重复请求");
+                return;
+            }
+
             tracing::info!("刷新城市列表");
+            // 设置加载状态
+            {
+                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.city_list_loading = true;
+            }
+            crate::ui::build::rerender_main_ui();
             request_citylist_from_device();
         }
         TOGGLE_APIKEY_VISIBLE_EVENT => toggle_apikey_visible(),
@@ -452,14 +469,57 @@ fn check_payment_status() {
     });
 }
 
-fn verify_api_key_signature(_api_key: &str, signature: &str) -> bool {
+/// 使用RSA-SHA256验证APIKey签名
+fn verify_api_key_signature(api_key: &str, signature: &str) -> bool {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
-    if STANDARD.decode(signature.as_bytes()).is_err() {
-        tracing::warn!("签名base64解码失败");
-        return false;
+    use rsa::pkcs8::DecodePublicKey;
+    use rsa::signature::Verifier;
+    use sha2::{Digest, Sha256};
+
+    // 1. Base64解码签名
+    let signature_bytes = match STANDARD.decode(signature.as_bytes()) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            tracing::error!("签名base64解码失败: {:?}", e);
+            return false;
+        }
+    };
+
+    // 2. 对APIKey进行SHA256哈希
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.as_bytes());
+    let hash = hasher.finalize();
+
+    // 3. 解析RSA公钥
+    let public_key_pem = RSA_PUBLIC_KEY;
+    let public_key = match rsa::RsaPublicKey::from_public_key_pem(public_key_pem) {
+        Ok(key) => key,
+        Err(e) => {
+            tracing::error!("解析RSA公钥失败: {:?}", e);
+            return false;
+        }
+    };
+
+    // 4. 使用PKCS1v15填充验证签名
+    let signature_obj = match rsa::pkcs1v15::Signature::try_from(signature_bytes.as_slice()) {
+        Ok(sig) => sig,
+        Err(e) => {
+            tracing::error!("签名格式错误: {:?}", e);
+            return false;
+        }
+    };
+
+    let verifying_key = rsa::pkcs1v15::VerifyingKey::<Sha256>::new_unprefixed(public_key);
+    match verifying_key.verify(&hash, &signature_obj) {
+        Ok(()) => {
+            tracing::info!("RSA签名验证成功");
+            true
+        }
+        Err(e) => {
+            tracing::error!("RSA签名验证失败: {:?}", e);
+            false
+        }
     }
-    tracing::warn!("签名验证暂未完全实现，跳过验证");
-    true
 }
 
 fn send_put_settings(api_key: &str) {
@@ -589,7 +649,7 @@ fn toggle_apikey_visible() {
     crate::ui::build::rerender_main_ui();
 }
 
-fn fetch_device_info_from_server() {
+pub fn fetch_device_info_from_server() {
     let api_key = {
         let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.api_key.clone()
@@ -607,14 +667,17 @@ fn fetch_device_info_from_server() {
         match super::api_client::post_json_no_auth(&url, &body) {
             Ok(json) => {
                 tracing::info!("getInfo response: {:?}", json);
-                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
-                state.server_device_info = Some(json);
+                {
+                    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.server_device_info = Some(json);
+                }
+                // 在设置完状态后立即刷新UI
+                crate::ui::build::rerender_main_ui();
             }
             Err(e) => {
                 tracing::error!("获取设备信息失败: {}", e);
             }
         }
-        crate::ui::build::rerender_main_ui();
     });
 }
 
@@ -789,6 +852,7 @@ fn handle_citylist_received(cities: &[serde_json::Value]) {
     {
         let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.city_list = city_list;
+        state.city_list_loading = false; // 重置加载状态
     }
 
     let _ = crate::ui::state::save_all_settings();
