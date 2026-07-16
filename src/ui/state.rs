@@ -85,7 +85,6 @@ pub struct UiState {
     pub verification_status: VerificationStatus,
 
     // 同步设置
-    pub sync_hourly_enabled: bool,
     pub sync_alerts_enabled: bool,
     pub selected_days: u32,
 
@@ -142,7 +141,6 @@ pub fn ui_state() -> &'static RwLock<UiState> {
             server_device_info: None,
             verification_status: VerificationStatus::NotStarted,
 
-            sync_hourly_enabled: default_bool_true(),
             sync_alerts_enabled: default_bool_true(),
             selected_days: 7,
 
@@ -200,8 +198,6 @@ pub fn server_api_key() -> Result<&'static str, String> {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct StoredApiSettings {
     #[serde(default = "default_bool_true")]
-    sync_hourly_enabled: bool,
-    #[serde(default = "default_bool_true")]
     sync_alerts_enabled: bool,
     #[serde(default)]
     selected_days: u32,
@@ -244,7 +240,6 @@ pub fn load_api_settings_once() {
                 let mut state = ui_state()
                     .write()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                state.sync_hourly_enabled = stored.sync_hourly_enabled;
                 state.sync_alerts_enabled = stored.sync_alerts_enabled;
                 state.selected_days = if stored.selected_days == 0 {
                     7
@@ -301,7 +296,6 @@ pub fn save_all_settings() -> Result<(), String> {
         .read()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let stored = StoredApiSettings {
-        sync_hourly_enabled: state.sync_hourly_enabled,
         sync_alerts_enabled: state.sync_alerts_enabled,
         selected_days: state.selected_days,
         selected_city_index: state.selected_city_index,

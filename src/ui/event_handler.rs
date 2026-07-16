@@ -13,7 +13,6 @@ pub const SEND_BUTTON_EVENT: &str = "send_button";
 pub const TAB_SYNC_EVENT: &str = "tab_sync";
 pub const TAB_CITY_EVENT: &str = "tab_city";
 pub const TAB_SETTINGS_EVENT: &str = "tab_settings";
-pub const HOURLY_SYNC_TOGGLE_EVENT: &str = "hourly_sync_toggle";
 pub const ALERTS_SYNC_TOGGLE_EVENT: &str = "alerts_sync_toggle";
 pub const OPEN_HELP_DOC_EVENT: &str = "open_help_doc";
 pub const OPEN_QQ_GROUP_EVENT: &str = "open_qq_group";
@@ -142,7 +141,6 @@ pub fn ui_event_processor(
         TAB_SETTINGS_EVENT => switch_tab(MainTab::Settings),
         OPEN_HELP_DOC_EVENT => open_help_doc_page(),
         OPEN_QQ_GROUP_EVENT => open_qq_group_page(),
-        HOURLY_SYNC_TOGGLE_EVENT => toggle_hourly_sync(),
         ALERTS_SYNC_TOGGLE_EVENT => toggle_alerts_sync(),
         DAYS_DROPDOWN_EVENT => {
             let parsed_value = parse_event_value(event_payload);
@@ -326,15 +324,6 @@ fn switch_tab(tab: MainTab) {
     if should_rerender {
         crate::ui::build::rerender_main_ui();
     }
-}
-
-fn toggle_hourly_sync() {
-    {
-        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
-        state.sync_hourly_enabled = !state.sync_hourly_enabled;
-    }
-    let _ = crate::ui::state::save_all_settings();
-    crate::ui::build::rerender_main_ui();
 }
 
 fn toggle_alerts_sync() {
@@ -756,14 +745,13 @@ pub fn fetch_device_info_from_server() {
 // ========== 天气同步 ==========
 
 fn send_weather_data() {
-    let (api_key, selected_idx, city_list, days, sync_hourly, sync_alerts) = {
+    let (api_key, selected_idx, city_list, days, sync_alerts) = {
         let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
         (
             state.api_key.clone(),
             state.selected_city_index,
             state.city_list.clone(),
             state.selected_days,
-            state.sync_hourly_enabled,
             state.sync_alerts_enabled,
         )
     };
@@ -807,17 +795,9 @@ fn send_weather_data() {
             let city_clone = city.clone();
             mark_sync_started(&city_clone);
 
-            let sync_hourly_clone = sync_hourly;
             let sync_alerts_clone = sync_alerts;
 
             wit_bindgen::block_on(async move {
-                // 发送逐小时天气数据（如果开启）
-                if sync_hourly_clone {
-                    if let Err(e) = send_hourly_weather(&api_key, &city_clone).await {
-                        tracing::warn!("逐小时天气同步失败: {}", e);
-                    }
-                }
-
                 // 发送预警数据（如果开启）
                 if sync_alerts_clone {
                     if let Err(e) = send_weather_alerts(&api_key, &city_clone).await {
@@ -836,33 +816,6 @@ fn send_weather_data() {
             show_alert("失败", &format!("获取天气失败: {}", e));
         }
     }
-}
-
-/// 同步逐小时天气数据
-async fn send_hourly_weather(api_key: &str, city: &CityInfo) -> Result<(), String> {
-    let url = format!("{}/api/v2/3f/getHourly/Eternal", server_api_base());
-    let body = serde_json::json!({
-        "Key": api_key,
-        "longitude": city.lon,
-        "latitude": city.lat
-    });
-
-    let json = super::api_client::post_json_no_auth(&url, &body)
-        .map_err(|e| format!("获取逐小时天气失败: {}", e))?;
-
-    let payload = serde_json::json!({
-        "type": "PUT_HOURLYDATA",
-        "data": {
-            "cityindex": 0,
-            "result": json
-        }
-    }).to_string();
-
-    if let Some(device_addr) = get_device_addr().await {
-        send_interconnect_message(&device_addr, &payload).await;
-    }
-
-    Ok(())
 }
 
 /// 同步天气预警数据

@@ -234,14 +234,6 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
 
     let days_card = build_days_card(state).margin_top(10);
 
-    let hourly_card = build_settings_card(
-        icons::hourly_sync_svg(),
-        "同步逐小时天气数据",
-        Some("开启后同步最近一周逐小时天气"),
-        Some(build_switch(state.sync_hourly_enabled, HOURLY_SYNC_TOGGLE_EVENT)),
-        None,
-    );
-
     let alerts_card = build_settings_card(
         icons::alerts_svg(),
         "同步天气预警数据",
@@ -259,7 +251,6 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
     root.child(city_label)
         .child(city_select)
         .child(days_card)
-        .child(hourly_card)
         .child(alerts_card)
         .child(send_button)
 }
