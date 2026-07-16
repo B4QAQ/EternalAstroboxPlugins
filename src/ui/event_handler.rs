@@ -187,14 +187,11 @@ pub fn ui_event_processor(
         SEARCH_RANGE_EVENT => {
             let value = parse_event_value(event_payload);
             tracing::info!("SEARCH_RANGE_EVENT value: {}", value);
-            // 优先使用 value 属性，否则用文本匹配
+            // value 可能是: "world", "cn", "jp" 或文本 "全球", "中国", "日本"
             let range = match value.as_str() {
-                "" => "",
-                "cn" => "cn",
-                "jp" => "jp",
-                "全球" => "",
-                "中国" => "cn",
-                "日本" => "jp",
+                "world" | "全球" => "",
+                "cn" | "中国" => "cn",
+                "jp" | "日本" => "jp",
                 _ => "",
             };
             tracing::info!("SEARCH_RANGE_EVENT resolved range: '{}'", range);

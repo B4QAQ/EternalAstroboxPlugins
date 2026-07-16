@@ -1091,12 +1091,12 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
 
     // 搜索范围选择
     let range_options = [
-        ("", "全球"),
+        ("world", "全球"),
         ("cn", "中国"),
         ("jp", "日本"),
     ];
     let selected_range_text = range_options.iter()
-        .find(|(k, _)| k == &state.city_search_range)
+        .find(|(k, _)| k == &state.city_search_range || (k == &"world" && state.city_search_range.is_empty()))
         .map(|(_, v)| *v)
         .unwrap_or("全球");
 
