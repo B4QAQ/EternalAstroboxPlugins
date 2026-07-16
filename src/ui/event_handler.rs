@@ -692,33 +692,39 @@ fn verify_api_key_signature(api_key: &str, signature: &str) -> bool {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use rsa::pkcs8::DecodePublicKey;
     use rsa::signature::Verifier;
-    use sha2::{Digest, Sha256};
+    use sha2::Sha256;
+
+    tracing::info!("开始验证签名, APIKey长度: {}, 签名长度: {}", api_key.len(), signature.len());
 
     // 1. Base64解码签名
     let signature_bytes = match STANDARD.decode(signature.as_bytes()) {
-        Ok(bytes) => bytes,
+        Ok(bytes) => {
+            tracing::info!("签名解码成功, 字节数: {}", bytes.len());
+            bytes
+        }
         Err(e) => {
             tracing::error!("签名base64解码失败: {:?}", e);
             return false;
         }
     };
 
-    // 2. 对APIKey进行SHA256哈希
-    let mut hasher = Sha256::new();
-    hasher.update(api_key.as_bytes());
-    let hash = hasher.finalize();
-
-    // 3. 解析RSA公钥
+    // 2. 解析RSA公钥
     let public_key_pem = RSA_PUBLIC_KEY;
     let public_key = match rsa::RsaPublicKey::from_public_key_pem(public_key_pem) {
-        Ok(key) => key,
+        Ok(key) => {
+            tracing::info!("RSA公钥解析成功");
+            key
+        }
         Err(e) => {
             tracing::error!("解析RSA公钥失败: {:?}", e);
             return false;
         }
     };
 
-    // 4. 使用PKCS1v15填充验证签名
+    // 3. 使用PKCS1v15验证签名
+    // 快应用 crypto.verify(algo: 'RSA-SHA256') 使用 RSASSA-PKCS1-v1_5 with SHA-256
+    // new_unprefixed 表示签名不包含 DigestInfo OID 前缀
+    let verifying_key = rsa::pkcs1v15::VerifyingKey::<Sha256>::new_unprefixed(public_key);
     let signature_obj = match rsa::pkcs1v15::Signature::try_from(signature_bytes.as_slice()) {
         Ok(sig) => sig,
         Err(e) => {
@@ -727,8 +733,8 @@ fn verify_api_key_signature(api_key: &str, signature: &str) -> bool {
         }
     };
 
-    let verifying_key = rsa::pkcs1v15::VerifyingKey::<Sha256>::new_unprefixed(public_key);
-    match verifying_key.verify(&hash, &signature_obj) {
+    // 4. 验证签名
+    match verifying_key.verify(api_key.as_bytes(), &signature_obj) {
         Ok(()) => {
             tracing::info!("RSA签名验证成功");
             true
