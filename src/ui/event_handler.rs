@@ -833,43 +833,45 @@ fn send_weather_data() {
                     }
                 };
 
-                // 倒序发送，每次发送14天
-                // 假设API返回的数据包含 daily 数组，我们按14天分块倒序发送
-                let daily = weather_json.get("daily").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-                let total_days = daily.len() as u32;
+                // API返回的数据结构: {"status":200,"result":[...天气数据...]}
+                // result字段是数组，包含每天的天气数据
+                let daily = weather_json.get("result").and_then(|v| v.as_array()).cloned().unwrap_or_default();
 
-                // 每14天为一块，倒序发送
-                let chunk_size = 14;
-                let chunks: Vec<_> = daily.chunks(chunk_size).collect();
-                let total_chunks = chunks.len() as u32;
+                if daily.is_empty() {
+                    error_msg = "未获取到天气数据".to_string();
+                } else {
+                    // 每14天为一块，倒序发送
+                    let chunk_size = 14;
+                    let chunks: Vec<_> = daily.chunks(chunk_size).collect();
+                    let total_chunks = chunks.len() as u32;
 
-                for (chunk_idx, chunk) in chunks.into_iter().enumerate().rev() {
-                    let chunk_num = total_chunks - chunk_idx as u32;
+                    for (chunk_idx, chunk) in chunks.into_iter().enumerate().rev() {
+                        let chunk_num = total_chunks - chunk_idx as u32;
 
-                    // 更新进度
-                    {
-                        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
-                        state.sync_progress.current_day = chunk_num;
-                        state.sync_progress.total_days = total_chunks;
-                        state.sync_progress.status_text = format!("发送数据块 {}/{}", chunk_num, total_chunks);
-                    }
-                    crate::ui::build::rerender_main_ui();
-
-                    // 构建该块的天气数据
-                    let mut chunk_json = weather_json.clone();
-                    chunk_json["daily"] = serde_json::Value::Array(chunk.to_vec());
-                    chunk_json["location"] = serde_json::Value::String(city_clone.name.clone());
-
-                    let payload = serde_json::json!({
-                        "type": "PUT_WEATHERDATA",
-                        "data": {
-                            "cityindex": 0,
-                            "result": chunk_json
+                        // 更新进度
+                        {
+                            let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                            state.sync_progress.current_day = chunk_num;
+                            state.sync_progress.total_days = total_chunks;
+                            state.sync_progress.status_text = format!("发送数据块 {}/{}", chunk_num, total_chunks);
                         }
-                    }).to_string();
+                        crate::ui::build::rerender_main_ui();
 
-                    send_interconnect_message(&device_addr, &payload).await;
-                    std::thread::sleep(Duration::from_millis(500));
+                        // 构建该块的天气数据
+                        let mut chunk_json = weather_json.clone();
+                        chunk_json["result"] = serde_json::Value::Array(chunk.to_vec());
+
+                        let payload = serde_json::json!({
+                            "type": "PUT_WEATHERDATA",
+                            "data": {
+                                "cityindex": 0,
+                                "result": chunk_json
+                            }
+                        }).to_string();
+
+                        send_interconnect_message(&device_addr, &payload).await;
+                        std::thread::sleep(Duration::from_millis(500));
+                    }
                 }
             }
             Err(e) => {
