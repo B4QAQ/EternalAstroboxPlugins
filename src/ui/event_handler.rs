@@ -20,7 +20,6 @@ pub const OPEN_QQ_GROUP_EVENT: &str = "open_qq_group";
 pub const DAYS_DROPDOWN_EVENT: &str = "days_dropdown";
 pub const GET_CITYLIST_EVENT: &str = "get_citylist";
 pub const SELECT_CITY_DROPDOWN_EVENT: &str = "select_city_dropdown";
-pub const SELECT_CITY_PREFIX: &str = "select_city:";
 pub const DELETE_CITY_PREFIX: &str = "delete_city:";
 pub const CHECK_PAYMENT_EVENT: &str = "check_payment";
 pub const UPGRADE_TO_PAID_EVENT: &str = "upgrade_to_paid";
@@ -231,20 +230,10 @@ pub fn ui_event_processor(
         SELECT_CITY_DROPDOWN_EVENT => {
             let parsed_value = parse_event_value(event_payload);
             tracing::info!("SELECT_CITY_DROPDOWN_EVENT: payload={}, parsed={}", event_payload, parsed_value);
-            if let Ok(idx) = parsed_value.parse::<usize>() {
-                tracing::info!("Selecting city index: {}", idx);
-                select_sync_city(idx);
-            }
+            // Select 返回选中项的文本，需要通过城市名匹配索引
+            select_city_by_name(&parsed_value);
         }
         _ => {}
-    }
-
-    if event_id.starts_with(SELECT_CITY_PREFIX) {
-        if let Some(idx_str) = event_id.strip_prefix(SELECT_CITY_PREFIX) {
-            if let Ok(idx) = idx_str.parse::<usize>() {
-                select_sync_city(idx);
-            }
-        }
     }
 
     if event_id.starts_with(DELETE_CITY_PREFIX) {
@@ -367,6 +356,35 @@ fn select_days(day: u32) {
     drop(state);
     let _ = crate::ui::state::save_all_settings();
     crate::ui::build::rerender_main_ui();
+}
+
+/// 根据城市名称选择城市（Select返回的是文本）
+fn select_city_by_name(name: &str) {
+    // 去掉可能的后缀 " · adm1"
+    let city_name = name.split(" · ").next().unwrap_or(name).trim();
+
+    // 先查找城市信息并克隆
+    let found = {
+        let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.city_list.iter().position(|c| c.name == city_name).map(|idx| {
+            let city = &state.city_list[idx];
+            (idx, city.name.clone(), city.adm1.clone(), city.adm2.clone(), city.lat.clone(), city.lon.clone())
+        })
+    };
+
+    if let Some((idx, name, adm1, adm2, lat, lon)) = found {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.selected_city_index = Some(idx);
+        state.selected_location_id = name.clone();
+        state.selected_location_name = name;
+        state.selected_location_adm1 = adm1;
+        state.selected_location_adm2 = adm2;
+        state.selected_location_lat = lat;
+        state.selected_location_lon = lon;
+        drop(state);
+        let _ = crate::ui::state::save_all_settings();
+        crate::ui::build::rerender_main_ui();
+    }
 }
 
 fn select_sync_city(idx: usize) {

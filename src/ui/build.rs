@@ -372,34 +372,56 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         .width_full()
         .gap(8);
 
-    // 选择城市下拉菜单（参考 simple-weather 的 Grid 布局）
+    // 选择城市下拉菜单（参考 simple-weather 的 Select 样式）
     let city_label = ui::Element::new(ui::ElementType::P, Some("选择城市"))
         .size(15)
         .margin_bottom(8);
 
-    // 城市列表网格（3列布局）
-    let city_grid = if state.city_list.is_empty() {
-        ui::Element::new(ui::ElementType::P, Some("请先在\"城市管理\"添加城市"))
-            .size(14)
-            .text_color("#888888")
+    let selected_city_name = if let Some(idx) = state.selected_city_index {
+        if idx < state.city_list.len() {
+            let city = &state.city_list[idx];
+            if city.adm1.is_empty() {
+                city.name.clone()
+            } else {
+                format!("{} · {}", city.name, city.adm1)
+            }
+        } else {
+            "请选择城市".to_string()
+        }
+    } else if !state.city_list.is_empty() {
+        // 如果没有选中但列表不为空，默认选中第一个
+        let city = &state.city_list[0];
+        if city.adm1.is_empty() {
+            city.name.clone()
+        } else {
+            format!("{} · {}", city.name, city.adm1)
+        }
     } else {
-        let mut grid = ui::Element::new(ui::ElementType::Grid, None)
-            .grid_template_columns("1fr 1fr 1fr")
-            .gap(8)
-            .width_full();
+        "请选择城市".to_string()
+    };
 
-        for (idx, city) in state.city_list.iter().enumerate() {
+    let mut city_select = ui::Element::new(ui::ElementType::Select, Some(&selected_city_name))
+        .on(ui::Event::Change, SELECT_CITY_DROPDOWN_EVENT)
+        .radius(8)
+        .padding_left(12)
+        .padding_right(12)
+        .bg("#2A2A2A")
+        .size(14);
+
+    if state.city_list.is_empty() {
+        let option = ui::Element::new(ui::ElementType::Option, Some("请先添加城市"));
+        city_select = city_select.child(option);
+    } else {
+        for city in state.city_list.iter() {
             let label = if city.adm1.is_empty() {
                 city.name.clone()
             } else {
                 format!("{} · {}", city.name, city.adm1)
             };
-            let is_selected = state.selected_city_index == Some(idx);
-            let chip = build_city_chip(&label, idx, is_selected);
-            grid = grid.child(chip);
+            let option = ui::Element::new(ui::ElementType::Option, Some(&label));
+            city_select = city_select.child(option);
         }
-        grid
-    };
+    }
 
     let days_card = build_days_card(state).margin_top(10);
 
@@ -433,35 +455,10 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
     };
 
     root.child(city_label)
-        .child(city_grid)
+        .child(city_select)
         .child(days_card)
         .child(alerts_card)
         .child(send_button)
-}
-
-/// 构建城市选择芯片（参考 simple-weather 的 location_chip）
-fn build_city_chip(label: &str, idx: usize, selected: bool) -> ui::Element {
-    let icon = ui::Element::new(ui::ElementType::Svg, Some(&icons::city_svg()))
-        .width(16)
-        .height(16);
-
-    let text = ui::Element::new(ui::ElementType::Span, Some(label)).size(14);
-
-    ui::Element::new(ui::ElementType::Button, None)
-        .without_default_styles()
-        .on(ui::Event::Click, &format!("{}{}", SELECT_CITY_PREFIX, idx))
-        .radius(18)
-        .padding_top(8)
-        .padding_bottom(8)
-        .padding_left(12)
-        .padding_right(12)
-        .bg(if selected { "#0090FF26" } else { "#1E1E1F" })
-        .text_color(if selected { "#0090FF" } else { "#FFFFFF" })
-        .flex()
-        .align_center()
-        .gap(6)
-        .child(icon)
-        .child(text)
 }
 
 // ========== 公告Tab ==========
@@ -1508,8 +1505,7 @@ fn build_days_card(state: &UiState) -> ui::Element {
 
     for day in options.iter() {
         let option_text = format!("{}天", day);
-        let option = ui::Element::new(ui::ElementType::Option, Some(&option_text))
-            .prop("value", &day.to_string());
+        let option = ui::Element::new(ui::ElementType::Option, Some(&option_text));
         select = select.child(option);
     }
 
