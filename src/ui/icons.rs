@@ -51,7 +51,7 @@ pub fn city_svg() -> String {
 }
 
 pub fn refresh_auth_svg() -> String {
-    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path fill="currentColor" d="M128 213.33q-35.73 0-60.53-24.8T42.67 128t24.8-60.53T128 42.67q18.27 0 35.2 7.57T192 72.53V42.67h21.33v74.66H139V96h44.8c-8.53-14.93-23.47-23.47-44.8-23.47-24.87 0-45.33 20.47-45.33 45.34s20.46 45.33 45.33 45.33q20.53 0 37.09-11.73T202.54 128h22.4q-7.47 28.27-30.4 46.13T128 213.33"/></svg>"#.to_string()
+    r#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24"><path fill="currentColor" d="M12.077 19q-2.931 0-4.966-2.033q-2.034-2.034-2.034-4.964t2.034-4.966T12.077 5q1.783 0 3.339.847q1.555.847 2.507 2.365V5h1v5.23h-5.23v-1h3.7q-.782-1.495-2.198-2.363T12.077 6q-2.5 0-4.25 1.75T6.077 12t1.75 4.25t4.25 1.75q1.925 0 3.475-1.1t2.175-2.9h1.062q-.662 2.246-2.514 3.623T12.077 19"/></svg>"#.to_string()
 }
 
 pub fn search_svg() -> String {
@@ -67,7 +67,7 @@ pub fn send_tab_svg() -> String {
 }
 
 pub fn refresh_svg() -> String {
-    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M216,128a88,88,0,1,1-88-88" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><polyline points="216 40 216 96 160 96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>"#.to_string()
+    r#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24"><path fill="currentColor" d="M12.077 19q-2.931 0-4.966-2.033q-2.034-2.034-2.034-4.964t2.034-4.966T12.077 5q1.783 0 3.339.847q1.555.847 2.507 2.365V5h1v5.23h-5.23v-1h3.7q-.782-1.495-2.198-2.363T12.077 6q-2.5 0-4.25 1.75T6.077 12t1.75 4.25t4.25 1.75q1.925 0 3.475-1.1t2.175-2.9h1.062q-.662 2.246-2.514 3.623T12.077 19"/></svg>"#.to_string()
 }
 
 /// 公告/喇叭图标

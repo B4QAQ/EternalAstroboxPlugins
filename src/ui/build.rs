@@ -372,57 +372,34 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         .width_full()
         .gap(8);
 
-    // 选择城市下拉菜单
+    // 选择城市下拉菜单（参考 simple-weather 的 Grid 布局）
     let city_label = ui::Element::new(ui::ElementType::P, Some("选择城市"))
         .size(15)
         .margin_bottom(8);
 
-    let selected_city_name = if let Some(idx) = state.selected_city_index {
-        if idx < state.city_list.len() {
-            let city = &state.city_list[idx];
-            if city.adm1.is_empty() {
-                city.name.clone()
-            } else {
-                format!("{} · {}", city.name, city.adm1)
-            }
-        } else {
-            "请选择城市".to_string()
-        }
-    } else if !state.city_list.is_empty() {
-        // 如果没有选中但列表不为空，默认选中第一个
-        let city = &state.city_list[0];
-        if city.adm1.is_empty() {
-            city.name.clone()
-        } else {
-            format!("{} · {}", city.name, city.adm1)
-        }
+    // 城市列表网格（3列布局）
+    let city_grid = if state.city_list.is_empty() {
+        ui::Element::new(ui::ElementType::P, Some("请先在\"城市管理\"添加城市"))
+            .size(14)
+            .text_color("#888888")
     } else {
-        "请选择城市".to_string()
-    };
+        let mut grid = ui::Element::new(ui::ElementType::Grid, None)
+            .grid_template_columns("1fr 1fr 1fr")
+            .gap(8)
+            .width_full();
 
-    let mut city_select = ui::Element::new(ui::ElementType::Select, Some(&selected_city_name))
-        .on(ui::Event::Change, SELECT_CITY_DROPDOWN_EVENT)
-        .radius(12)
-        .padding(12)
-        .bg("#1E1E1F")
-        .width_full();
-
-    if state.city_list.is_empty() {
-        let option = ui::Element::new(ui::ElementType::Option, Some("请先添加城市"))
-            .prop("value", "empty");
-        city_select = city_select.child(option);
-    } else {
         for (idx, city) in state.city_list.iter().enumerate() {
             let label = if city.adm1.is_empty() {
                 city.name.clone()
             } else {
                 format!("{} · {}", city.name, city.adm1)
             };
-            let option = ui::Element::new(ui::ElementType::Option, Some(&label))
-                .prop("value", &idx.to_string());
-            city_select = city_select.child(option);
+            let is_selected = state.selected_city_index == Some(idx);
+            let chip = build_city_chip(&label, idx, is_selected);
+            grid = grid.child(chip);
         }
-    }
+        grid
+    };
 
     let days_card = build_days_card(state).margin_top(10);
 
@@ -456,10 +433,35 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
     };
 
     root.child(city_label)
-        .child(city_select)
+        .child(city_grid)
         .child(days_card)
         .child(alerts_card)
         .child(send_button)
+}
+
+/// 构建城市选择芯片（参考 simple-weather 的 location_chip）
+fn build_city_chip(label: &str, idx: usize, selected: bool) -> ui::Element {
+    let icon = ui::Element::new(ui::ElementType::Svg, Some(&icons::city_svg()))
+        .width(16)
+        .height(16);
+
+    let text = ui::Element::new(ui::ElementType::Span, Some(label)).size(14);
+
+    ui::Element::new(ui::ElementType::Button, None)
+        .without_default_styles()
+        .on(ui::Event::Click, &format!("{}{}", SELECT_CITY_PREFIX, idx))
+        .radius(18)
+        .padding_top(8)
+        .padding_bottom(8)
+        .padding_left(12)
+        .padding_right(12)
+        .bg(if selected { "#0090FF26" } else { "#1E1E1F" })
+        .text_color(if selected { "#0090FF" } else { "#FFFFFF" })
+        .flex()
+        .align_center()
+        .gap(6)
+        .child(icon)
+        .child(text)
 }
 
 // ========== 公告Tab ==========

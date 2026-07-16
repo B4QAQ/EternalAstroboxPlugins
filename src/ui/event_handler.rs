@@ -20,6 +20,7 @@ pub const OPEN_QQ_GROUP_EVENT: &str = "open_qq_group";
 pub const DAYS_DROPDOWN_EVENT: &str = "days_dropdown";
 pub const GET_CITYLIST_EVENT: &str = "get_citylist";
 pub const SELECT_CITY_DROPDOWN_EVENT: &str = "select_city_dropdown";
+pub const SELECT_CITY_PREFIX: &str = "select_city:";
 pub const DELETE_CITY_PREFIX: &str = "delete_city:";
 pub const CHECK_PAYMENT_EVENT: &str = "check_payment";
 pub const UPGRADE_TO_PAID_EVENT: &str = "upgrade_to_paid";
@@ -236,6 +237,14 @@ pub fn ui_event_processor(
             }
         }
         _ => {}
+    }
+
+    if event_id.starts_with(SELECT_CITY_PREFIX) {
+        if let Some(idx_str) = event_id.strip_prefix(SELECT_CITY_PREFIX) {
+            if let Ok(idx) = idx_str.parse::<usize>() {
+                select_sync_city(idx);
+            }
+        }
     }
 
     if event_id.starts_with(DELETE_CITY_PREFIX) {
