@@ -178,7 +178,7 @@ pub fn ui_state() -> &'static RwLock<UiState> {
             verification_status: VerificationStatus::NotStarted,
 
             sync_alerts_enabled: default_bool_true(),
-            selected_days: 7,
+            selected_days: 14,
 
             city_list: Vec::new(),
             selected_city_index: None,
@@ -282,7 +282,7 @@ pub fn load_api_settings_once() {
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 state.sync_alerts_enabled = stored.sync_alerts_enabled;
                 state.selected_days = if stored.selected_days == 0 {
-                    7
+                    14
                 } else {
                     stored.selected_days
                 };

@@ -266,6 +266,9 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         .width_full()
         .gap(8);
 
+    // 设备信息卡片（如果有）
+    let device_info_card = build_device_info_card(state);
+
     // 选择城市下拉菜单
     let city_label = ui::Element::new(ui::ElementType::P, Some("选择城市"))
         .size(15)
@@ -340,11 +343,87 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         ).bg("#0090FF26").text_color("#0090FF")
     };
 
-    root.child(city_label)
+    root.child(device_info_card)
+        .child(city_label)
         .child(city_select)
         .child(days_card)
         .child(alerts_card)
         .child(send_button)
+}
+
+/// 构建设备信息卡片（显示在同步数据页顶部）
+fn build_device_info_card(state: &UiState) -> ui::Element {
+    // 如果没有设备信息，显示提示
+    if state.server_device_info.is_none() {
+        let hint = ui::Element::new(ui::ElementType::P, Some("请在设置页刷新授权信息"))
+            .size(13)
+            .text_color("#888888")
+            .margin_bottom(8);
+        return hint;
+    }
+
+    let info = state.server_device_info.as_ref().unwrap();
+    let result = info.get("result").unwrap_or(info);
+
+    // 设备信息卡片
+    let card = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .width_full()
+        .bg("#1E1E1F")
+        .radius(12)
+        .padding(12)
+        .gap(8)
+        .margin_bottom(8);
+
+    // 第一行：用户类型 + 请求用量
+    let row1 = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
+        .width_full()
+        .gap(12);
+
+    // 用户类型
+    let user_type = result.get("userType").and_then(|v| v.as_str()).unwrap_or("未知");
+    let type_color = if user_type == "free" { "#FF9800" } else { "#4CAF50" };
+    let type_label = ui::Element::new(ui::ElementType::P, Some(&format!("用户: {}", user_type)))
+        .size(13)
+        .text_color(type_color);
+
+    let spacer = ui::Element::new(ui::ElementType::Div, None)
+        .flex_grow(1.0);
+
+    // 请求用量
+    let used_req = result.get("UseRequests").and_then(|v| v.as_str()).unwrap_or("0");
+    let all_req = result.get("ALLRequests").and_then(|v| v.as_str()).unwrap_or("0");
+    let usage_text = format!("用量: {} / {}", used_req, all_req);
+    let usage_label = ui::Element::new(ui::ElementType::P, Some(&usage_text))
+        .size(13)
+        .text_color("#BBBBBB");
+
+    // 第二行：到期时间或剩余金额
+    let row2 = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
+        .width_full();
+
+    // 到期时间（订阅制）
+    let expire_text = if let Some(expired_at) = result.get("expiredAt").and_then(|v| v.as_str()) {
+        format!("到期: {}", expired_at)
+    } else if let Some(remaining) = result.get("remainingAmount").and_then(|v| v.as_str()) {
+        format!("余额: {} 元", remaining)
+    } else {
+        String::new()
+    };
+
+    let expire_label = ui::Element::new(ui::ElementType::P, Some(&expire_text))
+        .size(13)
+        .text_color("#888888");
+
+    card.child(row1.child(type_label).child(spacer).child(usage_label))
+        .child(row2.child(expire_label))
 }
 
 // ========== 公告Tab ==========
@@ -1098,6 +1177,7 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         .child(auth_title)
         .child(api_key_card)
         .child(usage_card)
+        .child(refresh_button)
         .child(search_title)
         .child(range_card)
         .child(number_card);
@@ -1106,8 +1186,7 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         root = root.child(card);
     }
 
-    root.child(refresh_button)
-        .child(more_title)
+    root.child(more_title)
         .child(help_card)
         .child(qq_card)
         .child(build_title)
