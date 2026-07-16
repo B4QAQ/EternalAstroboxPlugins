@@ -76,6 +76,9 @@ pub struct DeviceInfo {
     pub deviceType: String,
     pub brand: String,
     pub model: String,
+    // 蓝牙地址
+    #[serde(default)]
+    pub btAddr: String,
 }
 
 /// 城市信息

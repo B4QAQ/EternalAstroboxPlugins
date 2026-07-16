@@ -326,12 +326,12 @@ fn build_verification_ui(state: &UiState) -> ui::Element {
 fn build_device_info_card_for_verification(info: &DeviceInfo) -> ui::Element {
     let card = ui::Element::new(ui::ElementType::Div, None)
         .flex()
-        .flex_direction(ui::FlexDirection::Column)
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
         .width_full()
         .bg("#1E1E1F")
         .radius(12)
-        .padding(16)
-        .gap(8);
+        .padding(16);
 
     // 设备名
     let name = if info.model.is_empty() {
@@ -340,16 +340,23 @@ fn build_device_info_card_for_verification(info: &DeviceInfo) -> ui::Element {
         format!("{} {}", info.brand, info.model)
     };
     let name_label = ui::Element::new(ui::ElementType::P, Some(&name))
-        .size(16)
+        .size(15)
         .text_color("#FFFFFF");
 
-    // 设备ID
-    let id_text = format!("ID: {}", info.deviceId);
-    let id_label = ui::Element::new(ui::ElementType::P, Some(&id_text))
+    let spacer = ui::Element::new(ui::ElementType::Div, None)
+        .flex_grow(1.0);
+
+    // 蓝牙地址
+    let addr = if info.btAddr.is_empty() {
+        "未知地址".to_string()
+    } else {
+        info.btAddr.clone()
+    };
+    let addr_label = ui::Element::new(ui::ElementType::P, Some(&addr))
         .size(13)
         .text_color("#888888");
 
-    card.child(name_label).child(id_label)
+    card.child(name_label).child(spacer).child(addr_label)
 }
 
 fn build_weather_sync_ui(state: &UiState) -> ui::Element {
@@ -378,19 +385,30 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         } else {
             "请选择城市".to_string()
         }
+    } else if !state.city_list.is_empty() {
+        // 如果没有选中但列表不为空，默认选中第一个
+        let city = &state.city_list[0];
+        if city.adm1.is_empty() {
+            city.name.clone()
+        } else {
+            format!("{} · {}", city.name, city.adm1)
+        }
     } else {
         "请选择城市".to_string()
     };
 
     let mut city_select = ui::Element::new(ui::ElementType::Select, Some(&selected_city_name))
         .on(ui::Event::Change, SELECT_CITY_DROPDOWN_EVENT)
-        .radius(12)
-        .padding(12)
-        .bg("#1E1E1F")
-        .width_full();
+        .radius(18)
+        .bg("#2A2A2A")
+        .height(44)
+        .width_full()
+        .padding_left(12)
+        .padding_right(12);
 
     if state.city_list.is_empty() {
-        let option = ui::Element::new(ui::ElementType::Option, Some("请先添加城市"));
+        let option = ui::Element::new(ui::ElementType::Option, Some("请先添加城市"))
+            .prop("value", "");
         city_select = city_select.child(option);
     } else {
         for (idx, city) in state.city_list.iter().enumerate() {
@@ -399,8 +417,12 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
             } else {
                 format!("{} · {}", city.name, city.adm1)
             };
-            let option = ui::Element::new(ui::ElementType::Option, Some(&label))
+            let mut option = ui::Element::new(ui::ElementType::Option, Some(&label))
                 .prop("value", &idx.to_string());
+            // 如果是当前选中的，设置selected
+            if state.selected_city_index == Some(idx) || (state.selected_city_index.is_none() && idx == 0) {
+                option = option.prop("selected", "true");
+            }
             city_select = city_select.child(option);
         }
     }

@@ -449,6 +449,8 @@ fn parse_device_info(data: &serde_json::Value) -> DeviceInfo {
         deviceType: data.get("deviceType").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         brand: data.get("brand").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         model: data.get("model").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        // 蓝牙地址
+        btAddr: data.get("btAddr").or_else(|| data.get("bt_address")).or_else(|| data.get("mac")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
     }
 }
 
@@ -788,12 +790,12 @@ fn send_weather_data() {
     let sync_alerts_clone = sync_alerts;
     let days_to_sync = selected_days;
 
-    // 初始化同步进度
+    // 初始化同步进度（从0开始，获取数据后才显示实际进度）
     {
         let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.sync_progress = SyncProgress {
             syncing: true,
-            current_day: days_to_sync,
+            current_day: 0,
             total_days: days_to_sync,
             status_text: "获取天气数据...".to_string(),
         };
