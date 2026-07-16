@@ -399,12 +399,10 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
 
     let mut city_select = ui::Element::new(ui::ElementType::Select, Some(&selected_city_name))
         .on(ui::Event::Change, SELECT_CITY_DROPDOWN_EVENT)
-        .radius(18)
-        .bg("#2A2A2A")
-        .height(44)
-        .width_full()
-        .padding_left(12)
-        .padding_right(12);
+        .radius(12)
+        .padding(12)
+        .bg("#1E1E1F")
+        .width_full();
 
     if state.city_list.is_empty() {
         let option = ui::Element::new(ui::ElementType::Option, Some("请先添加城市"))
@@ -417,12 +415,8 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
             } else {
                 format!("{} · {}", city.name, city.adm1)
             };
-            let mut option = ui::Element::new(ui::ElementType::Option, Some(&label))
+            let option = ui::Element::new(ui::ElementType::Option, Some(&label))
                 .prop("value", &idx.to_string());
-            // 如果是当前选中的，设置selected
-            if state.selected_city_index == Some(idx) || (state.selected_city_index.is_none() && idx == 0) {
-                option = option.prop("selected", "true");
-            }
             city_select = city_select.child(option);
         }
     }
@@ -469,76 +463,51 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
 /// 构建设备信息卡片（显示在同步数据页顶部）
 fn build_device_info_card(state: &UiState) -> ui::Element {
     // 如果没有设备信息，显示提示
-    if state.server_device_info.is_none() {
-        let hint = ui::Element::new(ui::ElementType::P, Some("请在设置页刷新授权信息"))
+    if state.device_info.is_none() {
+        let hint = ui::Element::new(ui::ElementType::P, Some("设备未连接"))
             .size(13)
             .text_color("#888888")
             .margin_bottom(8);
         return hint;
     }
 
-    let info = state.server_device_info.as_ref().unwrap();
-    let result = info.get("result").unwrap_or(info);
+    let info = state.device_info.as_ref().unwrap();
 
-    // 设备信息卡片
+    // 设备信息卡片：设备名 + 蓝牙地址（一行显示）
     let card = ui::Element::new(ui::ElementType::Div, None)
         .flex()
-        .flex_direction(ui::FlexDirection::Column)
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
         .width_full()
         .bg("#1E1E1F")
         .radius(12)
         .padding(12)
-        .gap(8)
         .margin_bottom(8);
 
-    // 第一行：用户类型 + 请求用量
-    let row1 = ui::Element::new(ui::ElementType::Div, None)
-        .flex()
-        .flex_direction(ui::FlexDirection::Row)
-        .align_center()
-        .width_full()
-        .gap(12);
-
-    // 用户类型
-    let user_type = result.get("userType").and_then(|v| v.as_str()).unwrap_or("未知");
-    let type_color = if user_type == "free" { "#FF9800" } else { "#4CAF50" };
-    let type_label = ui::Element::new(ui::ElementType::P, Some(&format!("用户: {}", user_type)))
-        .size(13)
-        .text_color(type_color);
+    // 设备名
+    let name = if info.model.is_empty() {
+        info.brand.clone()
+    } else {
+        format!("{} {}", info.brand, info.model)
+    };
+    let name_label = ui::Element::new(ui::ElementType::P, Some(&name))
+        .size(15)
+        .text_color("#FFFFFF");
 
     let spacer = ui::Element::new(ui::ElementType::Div, None)
         .flex_grow(1.0);
 
-    // 请求用量
-    let used_req = result.get("UseRequests").and_then(|v| v.as_str()).unwrap_or("0");
-    let all_req = result.get("ALLRequests").and_then(|v| v.as_str()).unwrap_or("0");
-    let usage_text = format!("用量: {} / {}", used_req, all_req);
-    let usage_label = ui::Element::new(ui::ElementType::P, Some(&usage_text))
-        .size(13)
-        .text_color("#BBBBBB");
-
-    // 第二行：到期时间或剩余金额
-    let row2 = ui::Element::new(ui::ElementType::Div, None)
-        .flex()
-        .flex_direction(ui::FlexDirection::Row)
-        .align_center()
-        .width_full();
-
-    // 到期时间（订阅制）
-    let expire_text = if let Some(expired_at) = result.get("expiredAt").and_then(|v| v.as_str()) {
-        format!("到期: {}", expired_at)
-    } else if let Some(remaining) = result.get("remainingAmount").and_then(|v| v.as_str()) {
-        format!("余额: {} 元", remaining)
+    // 蓝牙地址
+    let addr = if info.btAddr.is_empty() {
+        "未知地址".to_string()
     } else {
-        String::new()
+        info.btAddr.clone()
     };
-
-    let expire_label = ui::Element::new(ui::ElementType::P, Some(&expire_text))
+    let addr_label = ui::Element::new(ui::ElementType::P, Some(&addr))
         .size(13)
         .text_color("#888888");
 
-    card.child(row1.child(type_label).child(spacer).child(usage_label))
-        .child(row2.child(expire_label))
+    card.child(name_label).child(spacer).child(addr_label)
 }
 
 // ========== 公告Tab ==========
