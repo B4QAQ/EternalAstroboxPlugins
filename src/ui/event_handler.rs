@@ -187,12 +187,11 @@ pub fn ui_event_processor(
         SEARCH_RANGE_EVENT => {
             let value = parse_event_value(event_payload);
             tracing::info!("SEARCH_RANGE_EVENT value: {}", value);
-            // value 可能是: "world", "cn", "jp" 或文本 "全球", "中国", "日本"
+            // value 是文本: "全球", "中国", "日本"
             let range = match value.as_str() {
-                "world" | "全球" => "",
-                "cn" | "中国" => "cn",
-                "jp" | "日本" => "jp",
-                _ => "",
+                "中国" => "cn",
+                "日本" => "jp",
+                _ => "", // 全球或其他
             };
             tracing::info!("SEARCH_RANGE_EVENT resolved range: '{}'", range);
             {
@@ -205,12 +204,13 @@ pub fn ui_event_processor(
         SEARCH_NUMBER_EVENT => {
             let value = parse_event_value(event_payload);
             tracing::info!("SEARCH_NUMBER_EVENT value: {}", value);
-            // 解析数字（可能是 "5 个"、"10 个" 等格式）
+            // value 是文本: "5 个", "10 个" 等
             let num = value
                 .trim()
                 .trim_end_matches(" 个")
                 .parse::<u32>()
                 .unwrap_or(10);
+            tracing::info!("SEARCH_NUMBER_EVENT resolved num: {}", num);
             {
                 let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
                 state.city_search_number = num;

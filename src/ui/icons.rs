@@ -51,7 +51,7 @@ pub fn city_svg() -> String {
 }
 
 pub fn refresh_auth_svg() -> String {
-    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M194.63,46.54a104,104,0,0,0-148.54,147.12l-4.8,17.43a8,8,0,0,0,9.59,9.59l17.43-4.81A104,104,0,0,0,224,128,104.11,104.11,0,0,0,194.63,46.54Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><path d="M116,176H108a28,28,0,0,0,0-56h32a20,20,0,0,0,0-40H128" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="104" y1="72" x2="140" y2="72" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>"#.to_string()
+    r#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24"><path fill="currentColor" d="M12.077 19q-2.931 0-4.966-2.033q-2.034-2.034-2.034-4.964t2.034-4.966T12.077 5q1.783 0 3.339.847q1.555.847 2.507 2.365V5h1v5.23h-5.23v-1h3.7q-.782-1.495-2.198-2.363T12.077 6q-2.5 0-4.25 1.75T6.077 12t1.75 4.25t4.25 1.75q1.925 0 3.475-1.1t2.175-2.9h1.062q-.662 2.246-2.514 3.623T12.077 19"/></svg>"#.to_string()
 }
 
 pub fn search_svg() -> String {
@@ -67,7 +67,7 @@ pub fn send_tab_svg() -> String {
 }
 
 pub fn refresh_svg() -> String {
-    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M232,128A104,104,0,0,1,128,232c-28.73,0-57.1-11.79-76.94-32.15a8,8,0,1,1,11.46-11.19C79.27,206.15,103.39,216,128,216a88,88,0,0,0,0-176c-30.69,0-58.51,15.69-74.22,40h38.22a8,8,0,0,1,0,16H40a8,8,0,0,1-8-8V48a8,8,0,1,1,16,0V71.09C66.73,41.42,96.09,24,128,24A104.13,104.13,0,0,1,232,128Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>"#.to_string()
+    r#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24"><path fill="currentColor" d="M12.077 19q-2.931 0-4.966-2.033q-2.034-2.034-2.034-4.964t2.034-4.966T12.077 5q1.783 0 3.339.847q1.555.847 2.507 2.365V5h1v5.23h-5.23v-1h3.7q-.782-1.495-2.198-2.363T12.077 6q-2.5 0-4.25 1.75T6.077 12t1.75 4.25t4.25 1.75q1.925 0 3.475-1.1t2.175-2.9h1.062q-.662 2.246-2.514 3.623T12.077 19"/></svg>"#.to_string()
 }
 
 /// 公告/喇叭图标

@@ -1089,16 +1089,14 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
     // 搜索设置
     let search_title = build_section_title("搜索设置");
 
-    // 搜索范围选择
-    let range_options = [
-        ("world", "全球"),
-        ("cn", "中国"),
-        ("jp", "日本"),
-    ];
-    let selected_range_text = range_options.iter()
-        .find(|(k, _)| k == &state.city_search_range || (k == &"world" && state.city_search_range.is_empty()))
-        .map(|(_, v)| *v)
-        .unwrap_or("全球");
+    // 搜索范围选择（不使用 value prop，直接用文本匹配）
+    let selected_range_text = if state.city_search_range == "cn" {
+        "中国"
+    } else if state.city_search_range == "jp" {
+        "日本"
+    } else {
+        "全球"
+    };
 
     let mut range_select = ui::Element::new(ui::ElementType::Select, Some(selected_range_text))
         .on(ui::Event::Change, SEARCH_RANGE_EVENT)
@@ -1107,9 +1105,10 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         .bg("#2A2A2A")
         .size(14);
 
-    for (key, label) in range_options {
+    // Option 不使用 value，使用非空占位符避免错误
+    for label in ["全球", "中国", "日本"] {
         let option = ui::Element::new(ui::ElementType::Option, Some(label))
-            .prop("value", key);
+            .prop("value", label); // 用文本作为 value，避免空字符串
         range_select = range_select.child(option);
     }
 
@@ -1122,7 +1121,6 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
     );
 
     // 结果数量选择
-    let number_options = [5u32, 10, 15, 20];
     let selected_number_text = format!("{} 个", state.city_search_number);
 
     let mut number_select = ui::Element::new(ui::ElementType::Select, Some(&selected_number_text))
@@ -1132,9 +1130,10 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         .bg("#2A2A2A")
         .size(14);
 
-    for num in number_options {
-        let option = ui::Element::new(ui::ElementType::Option, Some(&format!("{} 个", num)))
-            .prop("value", &num.to_string());
+    for num in [5u32, 10, 15, 20] {
+        let option_text = format!("{} 个", num);
+        let option = ui::Element::new(ui::ElementType::Option, Some(&option_text))
+            .prop("value", &option_text); // 用文本作为 value
         number_select = number_select.child(option);
     }
 
