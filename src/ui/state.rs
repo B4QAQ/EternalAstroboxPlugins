@@ -132,10 +132,20 @@ pub struct UiState {
     // 同步状态
     pub last_sync_time_ms: u64,
     pub last_sync_location: String,
+    pub sync_progress: SyncProgress,
 
     // 公告
     pub notice_list: Vec<NoticeInfo>,
     pub notice_loading: bool,
+}
+
+/// 同步进度状态
+#[derive(Clone, Default)]
+pub struct SyncProgress {
+    pub syncing: bool,
+    pub current_day: u32,
+    pub total_days: u32,
+    pub status_text: String,
 }
 
 /// 验证状态
@@ -189,6 +199,7 @@ pub fn ui_state() -> &'static RwLock<UiState> {
 
             last_sync_time_ms: 0,
             last_sync_location: String::new(),
+            sync_progress: SyncProgress::default(),
 
             notice_list: Vec::new(),
             notice_loading: false,

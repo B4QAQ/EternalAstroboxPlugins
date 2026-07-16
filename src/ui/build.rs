@@ -140,55 +140,123 @@ fn build_sync_tab(state: &UiState) -> ui::Element {
 }
 
 fn build_verification_ui(state: &UiState) -> ui::Element {
-    let status_text = match state.verification_status {
-        VerificationStatus::NotStarted => "尚未验证设备，请点击下方按钮开始验证",
+    let root = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .width_full()
+        .align_center()
+        .gap(20);
+
+    // 图标和标题区域
+    let icon_section = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .align_center()
+        .gap(12);
+
+    // 状态图标（根据状态显示不同颜色）
+    let (icon_color, status_icon) = match state.verification_status {
+        VerificationStatus::NotStarted => ("#888888", "○"),
+        VerificationStatus::CheckingDevice | VerificationStatus::GettingAPIKey | VerificationStatus::GettingDeviceInfo | VerificationStatus::VerifyingPayment => ("#0090FF", "◐"),
+        VerificationStatus::WaitingPayment => ("#FF9800", "◎"),
+        VerificationStatus::Verified => ("#4CAF50", "●"),
+        VerificationStatus::Failed => ("#F44336", "✕"),
+    };
+
+    let icon = ui::Element::new(ui::ElementType::P, Some(status_icon))
+        .size(48)
+        .text_color(icon_color);
+
+    // 标题
+    let title = ui::Element::new(ui::ElementType::P, Some("永昼天气同步器"))
+        .size(20)
+        .text_color("#FFFFFF");
+
+    icon_section.child(icon).child(title);
+
+    // 状态卡片
+    let status_card = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .width_full()
+        .bg("#1E1E1F")
+        .radius(12)
+        .padding(16)
+        .gap(12);
+
+    let status_label_text = match state.verification_status {
+        VerificationStatus::NotStarted => "尚未验证",
         VerificationStatus::CheckingDevice => "正在检测设备连接...",
         VerificationStatus::GettingAPIKey => "正在获取APIKey...",
         VerificationStatus::GettingDeviceInfo => "正在获取设备信息...",
-        VerificationStatus::WaitingPayment => "请完成付款后点击检查授权",
+        VerificationStatus::WaitingPayment => "等待付款",
         VerificationStatus::VerifyingPayment => "正在验证付款...",
         VerificationStatus::Verified => "已验证",
-        VerificationStatus::Failed => "验证失败，请重试",
+        VerificationStatus::Failed => "验证失败",
     };
 
-    let root = ui::Element::new(ui::ElementType::Div, None)
+    let status_label = ui::Element::new(ui::ElementType::P, Some(status_label_text))
+        .size(16)
+        .text_color(icon_color);
+
+    let status_desc = match state.verification_status {
+        VerificationStatus::NotStarted => "点击下方按钮开始验证设备",
+        VerificationStatus::WaitingPayment => "请完成付款后点击检查授权",
+        VerificationStatus::Failed => "请重试验证",
+        _ => "请稍候...",
+    };
+    let desc_label = ui::Element::new(ui::ElementType::P, Some(status_desc))
+        .size(14)
+        .text_color("#888888");
+
+    status_card.child(status_label).child(desc_label);
+
+    // 按钮区域
+    let button_section = ui::Element::new(ui::ElementType::Div, None)
         .flex()
         .flex_direction(ui::FlexDirection::Column)
         .width_full()
         .gap(12);
 
-    let status_label = ui::Element::new(ui::ElementType::P, Some(status_text))
-        .size(14)
-        .text_color("#BBBBBB");
-
-    // 根据状态显示不同的按钮
-    let mut root = root.child(status_label);
-
-    match state.verification_status {
+    let button = match state.verification_status {
         VerificationStatus::NotStarted | VerificationStatus::Failed => {
-            // 初始状态或失败状态：显示开始验证按钮
-            let verify_button = build_icon_text_button_full(
+            Some(build_icon_text_button_full(
                 "开始验证",
                 icons::api_tab_svg(),
                 UPGRADE_TO_PAID_EVENT,
-            ).bg("#0090FF26").text_color("#0090FF");
-            root = root.child(verify_button);
+            ).bg("#0090FF").text_color("#FFFFFF"))
         }
         VerificationStatus::WaitingPayment => {
-            // 等待付款状态：显示检查付款状态按钮
-            let check_button = build_icon_text_button_full(
+            Some(build_icon_text_button_full(
                 "检查付款状态",
                 icons::refresh_svg(),
                 CHECK_PAYMENT_EVENT,
-            ).bg("#0090FF26").text_color("#0090FF");
-            root = root.child(check_button);
+            ).bg("#FF9800").text_color("#FFFFFF"))
         }
-        _ => {
-            // 其他状态（检测中、获取中、验证中）：不显示按钮
+        VerificationStatus::CheckingDevice | VerificationStatus::GettingAPIKey | VerificationStatus::GettingDeviceInfo | VerificationStatus::VerifyingPayment => {
+            // 显示加载指示
+            let loading = ui::Element::new(ui::ElementType::P, Some("处理中..."))
+                .size(14)
+                .text_color("#888888")
+                .flex()
+                .align_center()
+                .justify_center()
+                .width_full()
+                .padding(14);
+            Some(loading)
         }
-    }
+        _ => None,
+    };
 
-    root
+    let button_section = if let Some(btn) = button {
+        button_section.child(btn)
+    } else {
+        button_section
+    };
+
+    root.child(icon_section)
+        .child(status_card)
+        .child(button_section)
 }
 
 fn build_weather_sync_ui(state: &UiState) -> ui::Element {
@@ -251,11 +319,26 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
         None,
     ).margin_bottom(10);
 
-    let send_button = build_icon_text_button_full(
-        "同步数据",
-        icons::send_tab_svg(),
-        SEND_BUTTON_EVENT,
-    ).bg("#0090FF26").text_color("#0090FF");
+    // 同步按钮（根据同步状态显示不同内容）
+    let send_button = if state.sync_progress.syncing {
+        // 显示进度
+        let progress_text = format!(
+            "同步中 {}/{}",
+            state.sync_progress.current_day,
+            state.sync_progress.total_days
+        );
+        build_icon_text_button_full(
+            &progress_text,
+            icons::refresh_svg(),
+            "", // 空事件，禁用点击
+        ).bg("#FF980026").text_color("#FF9800")
+    } else {
+        build_icon_text_button_full(
+            "同步数据",
+            icons::send_tab_svg(),
+            SEND_BUTTON_EVENT,
+        ).bg("#0090FF26").text_color("#0090FF")
+    };
 
     root.child(city_label)
         .child(city_select)
@@ -385,25 +468,45 @@ fn build_notice_card(notice: &NoticeInfo) -> ui::Element {
     for segment in segments {
         let seg_el = match segment {
             NoticeSegment::Text { text } => {
-                ui::Element::new(ui::ElementType::P, Some(&text))
-                    .size(14)
-                    .text_color("#CCCCCC")
+                // 处理换行：按 \n 分割成多行
+                let lines: Vec<&str> = text.split('\n').collect();
+                if lines.len() == 1 {
+                    ui::Element::new(ui::ElementType::P, Some(&text))
+                        .size(14)
+                        .text_color("#CCCCCC")
+                } else {
+                    let mut lines_container = ui::Element::new(ui::ElementType::Div, None)
+                        .flex()
+                        .flex_direction(ui::FlexDirection::Column)
+                        .gap(2);
+                    for line in lines {
+                        if !line.is_empty() {
+                            let line_el = ui::Element::new(ui::ElementType::P, Some(line))
+                                .size(14)
+                                .text_color("#CCCCCC");
+                            lines_container = lines_container.child(line_el);
+                        }
+                    }
+                    lines_container
+                }
             }
             NoticeSegment::Image { url, alt } => {
                 // 图片显示为可点击链接
-                let img_link = ui::Element::new(ui::ElementType::Span, Some(&format!("[图片: {}]", alt)))
+                ui::Element::new(ui::ElementType::Button, Some(&format!("[图片: {}]", alt)))
+                    .without_default_styles()
+                    .on(ui::Event::Click, &format!("{}{}", OPEN_NOTICE_LINK_PREFIX, url))
                     .text_color("#0090FF")
-                    .size(14);
-                // TODO: 点击打开图片
-                img_link
+                    .size(14)
+                    .padding(0)
             }
             NoticeSegment::QrCode { url, alt } => {
                 // 二维码显示为可点击链接
-                let qr_link = ui::Element::new(ui::ElementType::Span, Some(&format!("[二维码: {}]", alt)))
+                ui::Element::new(ui::ElementType::Button, Some(&format!("[二维码: {}]", alt)))
+                    .without_default_styles()
+                    .on(ui::Event::Click, &format!("{}{}", OPEN_NOTICE_LINK_PREFIX, url))
                     .text_color("#0090FF")
-                    .size(14);
-                // TODO: 点击显示二维码
-                qr_link
+                    .size(14)
+                    .padding(0)
             }
         };
         content_container = content_container.child(seg_el);
