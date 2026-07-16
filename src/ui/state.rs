@@ -57,7 +57,7 @@ pub struct DeviceInfo {
 }
 
 /// 城市信息
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CityInfo {
     pub name: String,
     pub lat: String,
@@ -93,6 +93,12 @@ pub struct UiState {
     pub city_list: Vec<CityInfo>,
     pub selected_city_index: Option<usize>,
     pub city_list_loading: bool, // 城市列表是否正在加载
+    pub city_search_keyword: String, // 城市搜索关键词
+    pub city_search_results: Vec<CityInfo>, // 搜索结果
+    pub city_search_loading: bool, // 是否正在搜索
+    pub city_search_range: String, // 搜索范围：world, china, japan
+    pub city_search_number: u32, // 结果数量：5, 10, 15, 20
+    pub search_results_expanded: bool, // 搜索结果是否展开
 
     // 选中位置信息
     pub selected_location_id: String,
@@ -143,6 +149,12 @@ pub fn ui_state() -> &'static RwLock<UiState> {
             city_list: Vec::new(),
             selected_city_index: None,
             city_list_loading: false,
+            city_search_keyword: String::new(),
+            city_search_results: Vec::new(),
+            city_search_loading: false,
+            city_search_range: String::new(),
+            city_search_number: 10,
+            search_results_expanded: true,
 
             selected_location_id: String::new(),
             selected_location_name: String::new(),
@@ -199,6 +211,14 @@ struct StoredApiSettings {
     api_key: String,
     #[serde(default)]
     city_list: Vec<CityInfo>,
+    #[serde(default)]
+    city_search_range: String,
+    #[serde(default = "default_search_number")]
+    city_search_number: u32,
+}
+
+fn default_search_number() -> u32 {
+    10
 }
 
 pub fn load_api_settings_once() {
@@ -234,6 +254,14 @@ pub fn load_api_settings_once() {
                 state.selected_city_index = stored.selected_city_index;
                 state.api_key = stored.api_key.clone();
                 state.city_list = stored.city_list;
+
+                // 加载搜索设置
+                if !stored.city_search_range.is_empty() {
+                    state.city_search_range = stored.city_search_range;
+                }
+                if stored.city_search_number > 0 {
+                    state.city_search_number = stored.city_search_number;
+                }
 
                 // 如果有APIKey，标记为已验证
                 if !state.api_key.is_empty() {
@@ -279,6 +307,8 @@ pub fn save_all_settings() -> Result<(), String> {
         selected_city_index: state.selected_city_index,
         api_key: state.api_key.clone(),
         city_list: state.city_list.clone(),
+        city_search_range: state.city_search_range.clone(),
+        city_search_number: state.city_search_number,
     };
 
     let content = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;

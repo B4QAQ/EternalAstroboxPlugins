@@ -81,7 +81,7 @@ fn build_tabs(state: &UiState) -> ui::Element {
 
     let city_trigger = build_tab_trigger(
         "城市管理",
-        icons::location_pin_svg(),
+        icons::city_svg(),
         state.current_tab == MainTab::CityManage,
         TAB_CITY_EVENT,
     );
@@ -266,6 +266,8 @@ fn build_weather_sync_ui(state: &UiState) -> ui::Element {
 
 // ========== 城市管理Tab ==========
 
+const INPUT_HEIGHT: u32 = 40;
+
 fn build_city_manage_tab(state: &UiState) -> ui::Element {
     let root = ui::Element::new(ui::ElementType::Div, None)
         .flex()
@@ -273,20 +275,107 @@ fn build_city_manage_tab(state: &UiState) -> ui::Element {
         .width_full()
         .gap(8);
 
-    // 添加城市按钮
-    let add_city_button = build_icon_text_button_full(
-        "添加城市",
-        icons::location_pin_svg(),
-        "add_city",
-    ).bg("#0090FF26").text_color("#0090FF");
+    // 搜索行：输入框 + 搜索按钮（参考 simple-weather-astrobox-v2-plugin）
+    let search_input = ui::Element::new(ui::ElementType::Input, Some(&state.city_search_keyword))
+        .on(ui::Event::Input, "city_search_input")
+        .radius(18)
+        .bg("#2A2A2A")
+        .height(INPUT_HEIGHT)
+        .width_full()
+        .padding_left(12)
+        .padding_right(12)
+        .flex_grow(1.0);
+
+    // 搜索按钮（图标样式）
+    let search_icon = ui::Element::new(ui::ElementType::Svg, Some(&icons::search_svg()))
+        .width(16)
+        .height(16);
+
+    let search_button = ui::Element::new(ui::ElementType::Button, None)
+        .without_default_styles()
+        .on(ui::Event::Click, SEARCH_CITY_BUTTON_EVENT)
+        .radius(18)
+        .height(INPUT_HEIGHT)
+        .padding_left(10)
+        .padding_right(10)
+        .bg("#2A2A2A")
+        .width(44)
+        .flex()
+        .align_center()
+        .justify_center()
+        .child(search_icon);
+
+    let search_row = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
+        .width_full()
+        .gap(8)
+        .child(search_input)
+        .child(search_button);
+
+    // 搜索结果列表（可折叠）
+    let search_results = if state.city_search_loading {
+        let loading_text = ui::Element::new(ui::ElementType::P, Some("搜索中..."))
+            .size(14)
+            .text_color("#888888")
+            .margin_top(8);
+        loading_text
+    } else if !state.city_search_results.is_empty() {
+        // 折叠标题行
+        let collapse_icon = if state.search_results_expanded { "▼ " } else { "▶ " };
+        let count_text = format!("{}搜索结果 ({} 个)", collapse_icon, state.city_search_results.len());
+
+        let collapse_header = ui::Element::new(ui::ElementType::Button, Some(&count_text))
+            .without_default_styles()
+            .on(ui::Event::Click, TOGGLE_SEARCH_RESULTS_EVENT)
+            .flex()
+            .flex_direction(ui::FlexDirection::Row)
+            .align_center()
+            .width_full()
+            .margin_top(8)
+            .padding(8)
+            .bg("#1E1E1F")
+            .radius(8)
+            .text_color("#BBBBBB");
+
+        if state.search_results_expanded {
+            let mut container = ui::Element::new(ui::ElementType::Div, None)
+                .flex()
+                .flex_direction(ui::FlexDirection::Column)
+                .gap(8)
+                .margin_top(4);
+
+            for (idx, city) in state.city_search_results.iter().enumerate() {
+                let item = build_city_search_item(city, idx);
+                container = container.child(item);
+            }
+            let wrapper = ui::Element::new(ui::ElementType::Div, None)
+                .flex()
+                .flex_direction(ui::FlexDirection::Column)
+                .child(collapse_header)
+                .child(container);
+            wrapper
+        } else {
+            collapse_header
+        }
+    } else if !state.city_search_keyword.is_empty() {
+        let no_result = ui::Element::new(ui::ElementType::P, Some("未找到匹配的城市"))
+            .size(14)
+            .text_color("#888888")
+            .margin_top(8);
+        no_result
+    } else {
+        ui::Element::new(ui::ElementType::Div, None)
+    };
 
     // 城市列表标题行（包含刷新按钮）
     let list_title = ui::Element::new(ui::ElementType::P, Some("城市列表"))
         .size(16)
-        .flex_shrink(0.0); // 防止被压缩
+        .flex_shrink(0.0);
 
     let spacer = ui::Element::new(ui::ElementType::Div, None)
-        .flex_grow(1.0); // 占据剩余空间
+        .flex_grow(1.0);
 
     // 刷新按钮（根据加载状态显示不同文字）
     let refresh_text = if state.city_list_loading {
@@ -306,7 +395,7 @@ fn build_city_manage_tab(state: &UiState) -> ui::Element {
         .padding_top(6)
         .padding_bottom(6)
         .size(14)
-        .flex_shrink(0.0); // 防止被压缩
+        .flex_shrink(0.0);
 
     let list_header = ui::Element::new(ui::ElementType::Div, None)
         .flex()
@@ -321,7 +410,7 @@ fn build_city_manage_tab(state: &UiState) -> ui::Element {
 
     // 城市列表
     let city_list_container = if state.city_list.is_empty() {
-        ui::Element::new(ui::ElementType::P, Some("暂无城市，请先添加"))
+        ui::Element::new(ui::ElementType::P, Some("暂无城市，请先搜索添加"))
             .size(14)
             .text_color("#888888")
             .margin_top(10)
@@ -339,9 +428,66 @@ fn build_city_manage_tab(state: &UiState) -> ui::Element {
         container
     };
 
-    root.child(add_city_button)
+    root.child(search_row)
+        .child(search_results)
         .child(list_header)
         .child(city_list_container)
+}
+
+/// 构建城市搜索结果项（两行布局，右侧大添加按钮）
+fn build_city_search_item(city: &CityInfo, idx: usize) -> ui::Element {
+    // 外层容器
+    let item = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .width_full()
+        .bg("#1E1E1F")
+        .radius(12)
+        .padding(12)
+        .gap(12);
+
+    // 左侧内容（两行）
+    let left_content = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .flex_grow(1.0)
+        .gap(4);
+
+    // 第一行：城市名
+    let name_text = ui::Element::new(ui::ElementType::P, Some(&city.name))
+        .size(15)
+        .flex_shrink(0.0);
+
+    // 第二行：adm1 adm2
+    let adm_text = if city.adm1.is_empty() {
+        city.country.clone()
+    } else if city.adm2.is_empty() {
+        format!("{} {}", city.adm1, city.country)
+    } else {
+        format!("{} {} {}", city.adm1, city.adm2, city.country)
+    };
+
+    let adm_label = ui::Element::new(ui::ElementType::P, Some(&adm_text))
+        .size(13)
+        .text_color("#888888")
+        .flex_shrink(0.0);
+
+    // 右侧大添加按钮（占据两行高度）
+    let add_btn = ui::Element::new(ui::ElementType::Button, Some("+"))
+        .without_default_styles()
+        .on(ui::Event::Click, &format!("{}{}", ADD_CITY_PREFIX, idx))
+        .bg("#0090FF")
+        .text_color("#FFFFFF")
+        .radius(8)
+        .width(48)
+        .flex_shrink(0.0)
+        .flex()
+        .align_center()
+        .justify_center()
+        .size(20);
+
+    item.child(left_content.child(name_text).child(adm_label))
+        .child(add_btn)
 }
 
 fn build_city_item(city: &CityInfo, idx: usize, is_selected: bool) -> ui::Element {
@@ -415,7 +561,7 @@ fn build_city_item(city: &CityInfo, idx: usize, is_selected: bool) -> ui::Elemen
     };
 
     let adm_label = ui::Element::new(ui::ElementType::P, Some(&adm_text))
-        .size(13)
+        .size(15)
         .text_color("#888888")
         .flex_shrink(0.0); // 防止被压缩
 
@@ -456,7 +602,6 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
 
     // 第二个卡片：请求用量 + 进度条
     let usage_card = build_usage_card(state);
-
     // 从服务器获取的设备信息
     let mut info_cards = Vec::new();
 
@@ -519,8 +664,73 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
     // 刷新设备信息按钮
     let refresh_button = build_icon_text_button_full(
         "刷新授权信息",
-        icons::refresh_svg(),
+        icons::refresh_auth_svg(),
         REFRESH_DEVICE_INFO_EVENT,
+    );
+
+    // 搜索设置
+    let search_title = build_section_title("搜索设置");
+
+    // 搜索范围选择
+    let range_options = [
+        ("", "全球"),
+        ("cn", "中国"),
+        ("jp", "日本"),
+    ];
+    let selected_range_text = range_options.iter()
+        .find(|(k, _)| k == &state.city_search_range)
+        .map(|(_, v)| *v)
+        .unwrap_or("全球");
+
+    let mut range_select = ui::Element::new(ui::ElementType::Select, Some(selected_range_text))
+        .on(ui::Event::Change, SEARCH_RANGE_EVENT)
+        .radius(8)
+        .padding(10)
+        .bg("#2A2A2A")
+        .size(14);
+
+    for (key, label) in range_options {
+        let mut option = ui::Element::new(ui::ElementType::Option, Some(label));
+        if key == state.city_search_range {
+            option = option.prop("selected", "true");
+        }
+        range_select = range_select.child(option);
+    }
+
+    let range_card = build_settings_card(
+        icons::search_settings_svg(),
+        "搜索范围",
+        None,
+        Some(range_select),
+        None,
+    );
+
+    // 结果数量选择
+    let number_options = [5u32, 10, 15, 20];
+    let selected_number_text = format!("{} 个", state.city_search_number);
+
+    let mut number_select = ui::Element::new(ui::ElementType::Select, Some(&selected_number_text))
+        .on(ui::Event::Change, SEARCH_NUMBER_EVENT)
+        .radius(8)
+        .padding(10)
+        .bg("#2A2A2A")
+        .size(14);
+
+    for num in number_options {
+        let option_text = format!("{} 个", num);
+        let mut option = ui::Element::new(ui::ElementType::Option, Some(&option_text));
+        if num == state.city_search_number {
+            option = option.prop("selected", "true");
+        }
+        number_select = number_select.child(option);
+    }
+
+    let number_card = build_settings_card(
+        icons::list_svg(),
+        "结果数量",
+        None,
+        Some(number_select),
+        None,
     );
 
     // 更多内容
@@ -583,7 +793,10 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
     let mut root = root
         .child(auth_title)
         .child(api_key_card)
-        .child(usage_card);
+        .child(usage_card)
+        .child(search_title)
+        .child(range_card)
+        .child(number_card);
 
     for card in info_cards {
         root = root.child(card);
@@ -653,11 +866,11 @@ fn build_apikey_status_card(state: &UiState) -> ui::Element {
         };
 
         let api_key_text = ui::Element::new(ui::ElementType::P, Some(&api_key_display))
-            .size(12)
+            .size(15)
             .text_color("#888888");
 
         let hint_label = ui::Element::new(ui::ElementType::P, Some(hint_text))
-            .size(12);
+            .size(15);
 
         ui::Element::new(ui::ElementType::Div, None)
             .flex()

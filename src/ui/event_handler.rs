@@ -26,6 +26,12 @@ pub const UPGRADE_TO_PAID_EVENT: &str = "upgrade_to_paid";
 pub const REFRESH_DEVICE_INFO_EVENT: &str = "refresh_device_info";
 pub const CITY_ORDER_PREFIX: &str = "city_order:";
 pub const TOGGLE_APIKEY_VISIBLE_EVENT: &str = "toggle_apikey_visible";
+pub const SEARCH_CITY_EVENT: &str = "search_city";
+pub const ADD_CITY_PREFIX: &str = "add_city:";
+pub const SEARCH_CITY_BUTTON_EVENT: &str = "search_city_button";
+pub const SEARCH_RANGE_EVENT: &str = "search_range";
+pub const SEARCH_NUMBER_EVENT: &str = "search_number";
+pub const TOGGLE_SEARCH_RESULTS_EVENT: &str = "toggle_search_results";
 
 // ========== Interconnect消息处理 ==========
 
@@ -168,6 +174,51 @@ pub fn ui_event_processor(
             request_citylist_from_device();
         }
         TOGGLE_APIKEY_VISIBLE_EVENT => toggle_apikey_visible(),
+        SEARCH_CITY_BUTTON_EVENT => {
+            let keyword = {
+                let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.city_search_keyword.clone()
+            };
+            search_city(&keyword);
+        }
+        SEARCH_RANGE_EVENT => {
+            let value = parse_event_value(event_payload);
+            tracing::info!("SEARCH_RANGE_EVENT value: {}", value);
+            // 解析范围值（显示文本转ISO代码）
+            let range = match value.as_str() {
+                "全球" | "" => "",
+                "中国" | "cn" => "cn",
+                "日本" | "jp" => "jp",
+                _ => "",
+            };
+            {
+                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.city_search_range = range.to_string();
+            }
+            let _ = crate::ui::state::save_all_settings();
+            crate::ui::build::rerender_main_ui();
+        }
+        SEARCH_NUMBER_EVENT => {
+            let value = parse_event_value(event_payload);
+            tracing::info!("SEARCH_NUMBER_EVENT value: {}", value);
+            // 解析数字（可能是 "5 个"、"10 个" 等格式）
+            let num = value
+                .trim()
+                .trim_end_matches(" 个")
+                .parse::<u32>()
+                .unwrap_or(10);
+            {
+                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.city_search_number = num;
+            }
+            let _ = crate::ui::state::save_all_settings();
+            crate::ui::build::rerender_main_ui();
+        }
+        TOGGLE_SEARCH_RESULTS_EVENT => {
+            let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.search_results_expanded = !state.search_results_expanded;
+            crate::ui::build::rerender_main_ui();
+        }
         CHECK_PAYMENT_EVENT => check_payment_status(),
         UPGRADE_TO_PAID_EVENT => start_verification(false),
         REFRESH_DEVICE_INFO_EVENT => refresh_device_info(),
@@ -185,6 +236,24 @@ pub fn ui_event_processor(
             if let Ok(idx) = idx_str.parse::<usize>() {
                 delete_city(idx);
             }
+        }
+    }
+
+    if event_id.starts_with(ADD_CITY_PREFIX) {
+        if let Some(idx_str) = event_id.strip_prefix(ADD_CITY_PREFIX) {
+            if let Ok(idx) = idx_str.parse::<usize>() {
+                add_city_to_device(idx);
+            }
+        }
+    }
+
+    // 搜索输入框更新关键词
+    if event_id == "city_search_input" {
+        let keyword = parse_event_value(event_payload);
+        // 忽略JSON格式的事件值
+        if !keyword.starts_with("{") {
+            let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.city_search_keyword = keyword;
         }
     }
 
@@ -673,9 +742,12 @@ pub fn fetch_device_info_from_server() {
                 }
                 // 在设置完状态后立即刷新UI
                 crate::ui::build::rerender_main_ui();
+                // 显示成功通知
+                show_alert("成功", "授权信息已刷新");
             }
             Err(e) => {
                 tracing::error!("获取设备信息失败: {}", e);
+                show_alert("失败", &format!("刷新失败: {}", e));
             }
         }
     });
@@ -872,6 +944,8 @@ fn delete_city(idx: usize) {
 }
 
 fn order_city(idx: usize, offset: i32) {
+    show_alert("提示", "正在排序城市...");
+
     wit_bindgen::block_on(async move {
         if let Some(device_addr) = get_device_addr().await {
             let payload = serde_json::json!({
@@ -881,6 +955,122 @@ fn order_city(idx: usize, offset: i32) {
             send_interconnect_message(&device_addr, &payload).await;
         }
     });
+}
+
+/// 搜索城市
+fn search_city(keyword: &str) {
+    let keyword = keyword.trim();
+    if keyword.is_empty() {
+        // 清空搜索结果
+        {
+            let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.city_search_results.clear();
+        }
+        crate::ui::build::rerender_main_ui();
+        return;
+    }
+
+    tracing::info!("搜索城市: {}", keyword);
+
+    // 设置加载状态
+    {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.city_search_keyword = keyword.to_string();
+        state.city_search_loading = true;
+    }
+    crate::ui::build::rerender_main_ui();
+
+    // 获取搜索设置
+    let (search_range, search_number) = {
+        let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        (state.city_search_range.clone(), state.city_search_number)
+    };
+
+    wit_bindgen::block_on(async move {
+        let url = format!("{}/api/v2/3f/getCity/Eternal", server_api_base());
+        let body = serde_json::json!({
+            "Key": ui_state().read().unwrap().api_key,
+            "location": keyword,
+            "range": search_range,
+            "number": search_number
+        });
+
+        tracing::info!("getCity request: url={}, body={}", url, serde_json::to_string(&body).unwrap_or_default());
+
+        match super::api_client::post_json_no_auth(&url, &body) {
+            Ok(json) => {
+                tracing::info!("getCity response: {:?}", json);
+                let result = json.get("result").unwrap_or(&json);
+                let cities: Vec<CityInfo> = if let Some(arr) = result.as_array() {
+                    arr.iter().filter_map(|c| {
+                        Some(CityInfo {
+                            name: c.get("name").and_then(|v| v.as_str())?.to_string(),
+                            lat: c.get("lat").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            lon: c.get("lon").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            adm1: c.get("adm1").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            adm2: c.get("adm2").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            country: c.get("country").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        })
+                    }).collect()
+                } else {
+                    Vec::new()
+                };
+
+                {
+                    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.city_search_results = cities;
+                    state.city_search_loading = false;
+                }
+            }
+            Err(e) => {
+                tracing::error!("搜索城市失败: {}", e);
+                {
+                    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    state.city_search_loading = false;
+                }
+            }
+        }
+        crate::ui::build::rerender_main_ui();
+    });
+}
+
+/// 添加城市到设备
+fn add_city_to_device(idx: usize) {
+    let city = {
+        let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.city_search_results.get(idx).cloned()
+    };
+
+    if let Some(city) = city {
+        tracing::info!("添加城市: {:?}", city);
+
+        wit_bindgen::block_on(async move {
+            if let Some(device_addr) = get_device_addr().await {
+                let payload = serde_json::json!({
+                    "type": "PUT_CITY",
+                    "data": {
+                        "result": {
+                            "name": city.name,
+                            "lat": city.lat,
+                            "lon": city.lon,
+                            "adm1": city.adm1,
+                            "adm2": city.adm2,
+                            "country": city.country
+                        }
+                    }
+                }).to_string();
+                send_interconnect_message(&device_addr, &payload).await;
+            }
+        });
+
+        // 清空搜索结果
+        {
+            let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.city_search_results.clear();
+            state.city_search_keyword.clear();
+        }
+        crate::ui::build::rerender_main_ui();
+    }
 }
 
 // ========== 页面跳转 ==========

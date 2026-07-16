@@ -50,6 +50,22 @@ pub fn location_pin_filled_svg() -> String {
     r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><line x1="128" y1="240" x2="128" y2="208" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><circle cx="128" cy="128" r="80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="128" y1="16" x2="128" y2="48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="16" y1="128" x2="48" y2="128" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="240" y1="128" x2="208" y2="128" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><circle cx="128" cy="128" r="32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>"#.to_string()
 }
 
+pub fn list_svg() -> String {
+    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><line x1="40" y1="64" x2="216" y2="64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="40" y1="128" x2="216" y2="128" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="40" y1="192" x2="216" y2="192" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>"#.to_string()
+}
+
+pub fn search_settings_svg() -> String {
+    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path fill="currentColor" d="m165.5 148l53.33 53.33l-16 16l-53.33-53.33v-8.43l-2.89-2.98A68.97 68.97 0 0 1 101.5 170A69.33 69.33 0 0 1 32 101.33A69.33 69.33 0 0 1 101.5 32A69.33 69.33 0 0 1 171 101.33c0 17.17-6.27 32.98-16.76 45.12l2.98 2.89zm-64-101.33l-5.87.32c-2.56 5.55-6.49 14.93-9.37 26.35h30.48c-2.88-11.42-6.81-20.8-9.37-26.35c-1.92-.32-3.84-.32-5.87-.32M147.55 74.67a52.63 52.63 0 0 0-28.54-23.68c2.56 5.65 5.87 13.87 8.32 23.68zM57.45 74.67h2.03c2.45-9.81 5.76-18.03 8.32-23.68A52.63 52.63 0 0 0 57.45 74.67M51.2 101.33c0 5.33.85 10.99 2.45 16h22.82l-1.28-16l1.28-16H53.65c-1.6 5.01-2.45 10.67-2.45 16m104.03 16c1.6-5.01 2.45-10.67 2.45-16s-.85-10.99-2.45-16h-22.82c.43 5.33.43 10.67 0 16zM78.37 85.33l-1.28 16l1.28 16h34.56c.43-5.33.43-10.67 0-16zM96 149.33c1.92 0 3.84 0 5.65-.32c2.67-5.55 6.71-14.93 9.6-26.35H81.33c2.88 11.42 6.93 20.8 9.6 26.35zm46.23-26.66h-2.03c-2.45 9.81-5.76 18.03-8.32 23.68A52.63 52.63 0 0 0 147.55 122.67zm-92.22 0a52.63 52.63 0 0 0 28.54 23.68c-2.56-5.65-5.87-13.87-8.32-23.68z"/></svg>"#.to_string()
+}
+
+pub fn city_svg() -> String {
+    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><g fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="18"><path d="M149.33 85.33h-42.66c-26.41 0-32 5.59-32 32v117.34h106.66V117.33c0-26.41-5.58-32-32-32Z"/><path stroke-linecap="round" d="M117.33 128h21.34m-21.34 32h21.34m-21.34 32h21.34m64 42.67V87.47c0-13.05 0-19.57-3.19-24.8c-3.18-5.26-8.9-8.18-20.37-14.02l-46.1-23.52c-2.03-1.03-5.08 1.2-5.08 15.04v47.68M32 224v-96c0-8.83 1.84-10.67 10.67-10.67h32m159.99 106.67H21.33"/></g></svg>"#.to_string()
+}
+
+pub fn refresh_auth_svg() -> String {
+    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path fill="currentColor" d="M128 213.33q-35.73 0-60.53-24.8T42.67 128t24.8-60.53T128 42.67q18.27 0 35.2 7.57T192 72.53V42.67h21.33v74.66H139V96h44.8c-8.53-14.93-23.47-23.47-44.8-23.47-24.87 0-45.33 20.47-45.33 45.34s20.46 45.33 45.33 45.33q20.53 0 37.09-11.73T202.54 128h22.4q-7.47 28.27-30.4 46.13T128 213.33"/></svg>"#.to_string()
+}
+
 pub fn search_svg() -> String {
     r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><circle cx="112" cy="112" r="80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="168.57" y1="168.57" x2="224" y2="224" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></svg>"#.to_string()
 }
