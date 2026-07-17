@@ -78,6 +78,46 @@ pub fn post_json_no_auth(url: &str, payload: &serde_json::Value) -> Result<serde
     parse_http_json_response(status, response_body)
 }
 
+/// 发送POST请求并返回HTTP状态码和JSON（不需要认证）
+/// 与 post_json_no_auth 不同：200和201均返回Ok，调用方可根据状态码区分处理
+pub fn post_json_no_auth_with_status(
+    url: &str,
+    payload: &serde_json::Value,
+) -> Result<(u16, serde_json::Value), String> {
+    let body = serde_json::to_vec(payload).map_err(|e| format!("请求序列化失败: {}", e))?;
+    let headers = base_headers(true);
+    let (status, response_body) = request_bytes("POST", url, &headers, Some(&body))?;
+    tracing::info!(
+        "post_json_no_auth_with_status status={}, body_len={}",
+        status,
+        response_body.len()
+    );
+    log_body_preview("post_json_no_auth_with_status", &response_body);
+
+    let decompressed = maybe_decompress(response_body)?;
+    if decompressed.is_empty() {
+        return Err("Empty response".to_string());
+    }
+
+    let json: serde_json::Value = serde_json::from_slice(&decompressed)
+        .map_err(|e| format!("响应解析失败: {}", e))?;
+
+    // 200 和 201 均视为成功，返回状态码供调用方判断
+    if status == 200 || status == 201 {
+        return Ok((status, json));
+    }
+
+    // 其他状态码提取错误信息
+    if let Some(message) = json.get("message").and_then(|v| v.as_str()) {
+        return Err(message.to_string());
+    }
+    if let Some(code) = json.get("code").and_then(|v| v.as_str()) {
+        return Err(format!("接口错误: {}", code));
+    }
+
+    Err(format!("HTTP {}", status))
+}
+
 /// 解析HTTP JSON响应
 fn parse_http_json_response(status: u16, body: Vec<u8>) -> Result<serde_json::Value, String> {
     let body = maybe_decompress(body)?;

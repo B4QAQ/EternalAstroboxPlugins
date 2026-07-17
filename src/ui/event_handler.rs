@@ -687,68 +687,11 @@ fn check_payment_status() {
     });
 }
 
-/// 使用RSA-SHA256验证APIKey签名
-fn verify_api_key_signature(api_key: &str, signature: &str) -> bool {
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
-    use rsa::pkcs8::DecodePublicKey;
-    use rsa::signature::Verifier;
-    use sha2::Sha256;
-
-    tracing::info!("开始验证签名, APIKey长度: {}, 签名长度: {}", api_key.len(), signature.len());
-
-    // 1. Base64解码签名
-    let signature_bytes = match STANDARD.decode(signature.as_bytes()) {
-        Ok(bytes) => {
-            tracing::info!("签名解码成功, 字节数: {}", bytes.len());
-            bytes
-        }
-        Err(e) => {
-            tracing::error!("签名base64解码失败: {:?}", e);
-            return false;
-        }
-    };
-
-    // 2. 解析RSA公钥
-    let public_key_pem = RSA_PUBLIC_KEY;
-    let public_key = match rsa::RsaPublicKey::from_public_key_pem(public_key_pem) {
-        Ok(key) => {
-            tracing::info!("RSA公钥解析成功");
-            key
-        }
-        Err(e) => {
-            tracing::error!("解析RSA公钥失败: {:?}", e);
-            return false;
-        }
-    };
-
-    // 3. 构造签名对象
-    let signature_obj = match rsa::pkcs1v15::Signature::try_from(signature_bytes.as_slice()) {
-        Ok(sig) => sig,
-        Err(e) => {
-            tracing::error!("签名格式错误: {:?}", e);
-            return false;
-        }
-    };
-
-    // 4. 使用 PKCS1v15 验证签名 (unprefixed 模式)
-    // 华为快应用的 crypto.verify(algo: 'RSA-SHA256') 使用的是标准 RSASSA-PKCS1-v1_5
-    // 这里的 unprefixed 表示签名直接是加密的哈希值，不包含 DigestInfo OID 前缀
-    let verifying_key = rsa::pkcs1v15::VerifyingKey::<Sha256>::new_unprefixed(public_key);
-
-    match verifying_key.verify(api_key.as_bytes(), &signature_obj) {
-        Ok(()) => {
-            tracing::info!("RSA签名验证成功");
-            true
-        }
-        Err(e) => {
-            tracing::error!("RSA签名验证失败: {:?}", e);
-
-            // 如果失败，可能是签名格式问题，打印更多信息帮助调试
-            tracing::error!("APIKey: {}", api_key);
-            tracing::error!("签名字节长度: {}", signature_bytes.len());
-            false
-        }
-    }
+/// 验证APIKey（跳过签名验证，直接写入）
+fn verify_api_key_signature(_api_key: &str, _signature: &str) -> bool {
+    // 直接返回 true，跳过签名验证
+    tracing::info!("跳过签名验证，直接写入APIKey");
+    true
 }
 
 fn send_put_settings(api_key: &str) {
@@ -818,6 +761,9 @@ fn start_verification(_is_free: bool) {
                 return;
             }
         };
+
+        // get_device_addr 已存储 host_device_info，重新渲染以显示设备信息
+        crate::ui::build::rerender_main_ui();
 
         // 先请求APIKey
         request_apikey_from_device(&device_addr);
@@ -892,9 +838,17 @@ pub fn fetch_device_info_from_server() {
         let url = format!("{}/api/v2/getInfo/Eternal", server_api_base());
         let body = serde_json::json!({ "Key": api_key });
 
-        // 使用不需要全局认证的请求
-        match super::api_client::post_json_no_auth(&url, &body) {
-            Ok(json) => {
+        // 使用带状态码的请求，以便区分 200（正常）和 201（授权失效）
+        match super::api_client::post_json_no_auth_with_status(&url, &body) {
+            Ok((status, json)) => {
+                if status == 201 {
+                    // 设备用量信息无法获取，授权可能已过期
+                    tracing::warn!("getInfo returned 201, authorization may be expired");
+                    handle_reactivation_needed();
+                    return;
+                }
+
+                // status == 200，正常处理
                 tracing::info!("getInfo response: {:?}", json);
                 {
                     let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -911,6 +865,27 @@ pub fn fetch_device_info_from_server() {
             }
         }
     });
+}
+
+/// 设备授权失效（HTTP 201），清空APIKey并提示用户重新激活
+fn handle_reactivation_needed() {
+    // 清空APIKey和验证状态，重置为未激活状态
+    {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.api_key.clear();
+        state.api_key_verified = false;
+        state.verification_status = VerificationStatus::NotStarted;
+        state.server_device_info = None;
+    }
+
+    // 保存设置（将清空后的APIKey写入磁盘，避免重启后仍使用失效的key）
+    let _ = crate::ui::state::save_all_settings();
+
+    // 重新渲染UI，显示激活页面
+    crate::ui::build::rerender_main_ui();
+
+    // 弹出对话框提示用户重新激活
+    show_alert("授权失效", "设备用量信息无法获取，您的授权可能已过期，请重新激活");
 }
 
 // ========== 天气同步 ==========
@@ -940,6 +915,7 @@ fn send_weather_data() {
         }
     };
 
+    let city_index = selected_idx.unwrap_or(0);
     let city_clone = city.clone();
     let api_key_clone = api_key.clone();
     let sync_alerts_clone = sync_alerts;
@@ -1019,7 +995,7 @@ fn send_weather_data() {
                         let payload = serde_json::json!({
                             "type": "PUT_WEATHERDATA",
                             "data": {
-                                "cityindex": 0,
+                                "cityindex": city_index,
                                 "result": chunk_json
                             }
                         }).to_string();
@@ -1042,7 +1018,7 @@ fn send_weather_data() {
             }
             crate::ui::build::rerender_main_ui();
 
-            if let Err(e) = send_weather_alerts(&api_key_clone, &city_clone).await {
+            if let Err(e) = send_weather_alerts(&api_key_clone, &city_clone, city_index).await {
                 tracing::warn!("预警数据同步失败: {}", e);
             }
         }
@@ -1064,7 +1040,7 @@ fn send_weather_data() {
 }
 
 /// 同步天气预警数据
-async fn send_weather_alerts(api_key: &str, city: &CityInfo) -> Result<(), String> {
+async fn send_weather_alerts(api_key: &str, city: &CityInfo, city_index: usize) -> Result<(), String> {
     let url = format!("{}/api/v2/3f/getWarn/Eternal", server_api_base());
     let body = serde_json::json!({
         "Key": api_key,
@@ -1078,7 +1054,7 @@ async fn send_weather_alerts(api_key: &str, city: &CityInfo) -> Result<(), Strin
     let payload = serde_json::json!({
         "type": "PUT_WARNDATA",
         "data": {
-            "cityindex": 0,
+            "cityindex": city_index,
             "result": json
         }
     }).to_string();
@@ -1103,7 +1079,14 @@ fn mark_sync_started(city: &CityInfo) {
 async fn get_device_addr() -> Option<String> {
     let devices = psys_host::device::get_connected_device_list().await;
     tracing::info!("get_connected_device_list returned {} devices", devices.len());
-    devices.first().map(|d| d.addr.clone())
+    if let Some(device) = devices.first() {
+        // 顺便存储设备信息，供激活页面显示使用
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.host_device_info = Some((device.name.clone(), device.addr.clone()));
+        Some(device.addr.clone())
+    } else {
+        None
+    }
 }
 
 async fn send_interconnect_message(device_addr: &str, payload: &str) -> bool {

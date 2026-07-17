@@ -6,17 +6,6 @@ const WEATHER_API_HOST: Option<&str> = option_env!("WEATHER_API_HOST");
 const WEATHER_API_CLIENT_TYPE: Option<&str> = option_env!("WEATHER_API_CLIENT_TYPE");
 const WEATHER_API_KEY: Option<&str> = option_env!("WEATHER_API_KEY");
 
-/// RSA公钥，用于验证APIKey签名
-pub const RSA_PUBLIC_KEY: &str = r#"-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAutMRnVK8jgWfNMpPN1OA
-g6itqCrF2KBzRqHUYE6iTGre9vvsOPR8XgYoHxhfEOy+21ofTELLr2Gw1zp6WsgP
-7ij7Vk+LI7xO1sUSXnaFEDx8V12gGzgleq1S5UwX985GxTky+SSgQI1/PjuOOy/6
-HuOo7fPkXr2YMsVbNHw/eBGWrqqLn5A8rYAO7zYXZY8LM/EnraN72Qs3oh5WjksW
-ZQwVnGDk+iY53LsWqjHlcD6jXc7c47juskZGGho3qFSlw3FwcBh/eHhedK6WCPv6
-aqkLFUQ8DAQdJqlGy+ZddKpx2LTz7QbYXVM8/C8d4Zv8VgUgznC5g6y3fxvz9K/F
-+wIDAQAB
------END PUBLIC KEY-----"#;
-
 /// 应用名称，用于服务端API
 pub const APP_NAME: &str = "Eternal";
 
@@ -107,6 +96,7 @@ pub struct UiState {
     pub api_key_visible: bool, // APIKey是否可见（默认隐藏）
     pub device_info: Option<DeviceInfo>,
     pub server_device_info: Option<serde_json::Value>, // 从服务器获取的设备信息（含用量等）
+    pub host_device_info: Option<(String, String)>, // 主机设备信息（name, addr），来自 device::get_connected_device_list()
     pub verification_status: VerificationStatus,
 
     // 同步设置
@@ -178,6 +168,7 @@ pub fn ui_state() -> &'static RwLock<UiState> {
             api_key_visible: false, // 默认隐藏APIKey
             device_info: None,
             server_device_info: None,
+            host_device_info: None,
             verification_status: VerificationStatus::NotStarted,
 
             sync_alerts_enabled: default_bool_true(),

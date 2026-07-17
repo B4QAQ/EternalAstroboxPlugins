@@ -1,23 +1,23 @@
-# 简明天气 快应用 AstroBoxV2插件
-
-> 🧩 simple-weather-astrobox-plugin-v2
-
----
+# 永昼天气 快应用 AstroBoxV2插件
 
 ## 项目简介
 
-简明天气是适用于Vela的长期天气存储快应用
+**Eternal 永昼天气** 致力于做Vela天气应用的天花板
 
 ## 感谢
+
 - [倒数日AstroBox插件](https://github.com/sf-yuzifu/Daymatter-AstroBox-Plugin) 项目
 - [WaiJade](https://github.com/CheongSzesuen)
+- [Zaona]([WaiJade](https://github.com/zaona))
 
 ## 快应用包名
-com.application.zaona.weather
+
+moe.mcns.Eternal
 
 ## 快速开始
 
 ### 初始化子模块
+
 ```
 git submodule update --init --remote --recursive
 ```

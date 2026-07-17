@@ -187,9 +187,9 @@ fn build_verification_ui(state: &UiState) -> ui::Element {
                 .text_color("#888888")
                 .margin_bottom(16);
 
-            // 设备信息卡片（如果有）
-            let device_card = if let Some(ref info) = state.device_info {
-                build_device_info_card_for_verification(info)
+            // 设备信息卡片（使用主机 device 接口的 device-info）
+            let device_card = if let Some((ref name, ref addr)) = state.host_device_info {
+                build_device_info_card_for_verification(name, addr)
             } else {
                 ui::Element::new(ui::ElementType::P, Some("正在搜索设备..."))
                     .size(14)
@@ -225,9 +225,9 @@ fn build_verification_ui(state: &UiState) -> ui::Element {
                 .text_color("#888888")
                 .margin_bottom(8);
 
-            // 设备信息卡片
-            let device_card = if let Some(ref info) = state.device_info {
-                build_device_info_card_for_verification(info)
+            // 设备信息卡片（使用主机 device 接口的 device-info）
+            let device_card = if let Some((ref name, ref addr)) = state.host_device_info {
+                build_device_info_card_for_verification(name, addr)
             } else {
                 ui::Element::new(ui::ElementType::P, Some("设备信息获取中..."))
                     .size(14)
@@ -347,7 +347,8 @@ fn build_verification_ui(state: &UiState) -> ui::Element {
 }
 
 /// 构建验证流程中的设备信息卡片
-fn build_device_info_card_for_verification(info: &DeviceInfo) -> ui::Element {
+/// 构建设备信息卡片（用于激活页面，使用主机 device 接口的 device-info）
+fn build_device_info_card_for_verification(name: &str, addr: &str) -> ui::Element {
     let card = ui::Element::new(ui::ElementType::Div, None)
         .flex()
         .flex_direction(ui::FlexDirection::Row)
@@ -357,26 +358,26 @@ fn build_device_info_card_for_verification(info: &DeviceInfo) -> ui::Element {
         .radius(12)
         .padding(16);
 
-    // 设备名
-    let name = if info.model.is_empty() {
-        info.brand.clone()
+    // 设备名称（来自 device::get_connected_device_list() 的 device-info.name）
+    let display_name = if name.is_empty() {
+        "未知设备".to_string()
     } else {
-        format!("{} {}", info.brand, info.model)
+        name.to_string()
     };
-    let name_label = ui::Element::new(ui::ElementType::P, Some(&name))
+    let name_label = ui::Element::new(ui::ElementType::P, Some(&display_name))
         .size(15)
         .text_color("#FFFFFF");
 
     let spacer = ui::Element::new(ui::ElementType::Div, None)
         .flex_grow(1.0);
 
-    // 蓝牙地址
-    let addr = if info.btAddr.is_empty() {
+    // 设备地址（来自 device::get_connected_device_list() 的 device-info.addr）
+    let display_addr = if addr.is_empty() {
         "未知地址".to_string()
     } else {
-        info.btAddr.clone()
+        addr.to_string()
     };
-    let addr_label = ui::Element::new(ui::ElementType::P, Some(&addr))
+    let addr_label = ui::Element::new(ui::ElementType::P, Some(&display_addr))
         .size(13)
         .text_color("#888888");
 
