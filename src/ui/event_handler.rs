@@ -1349,7 +1349,7 @@ fn open_help_doc_page() {
 }
 
 fn open_qq_group_page() {
-    let url = "https://qm.qq.com/q/njSLR4VNja";
+    let url = "http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=1vc4XKmAyGeJJTmXumfkaaxRcQl1hMaK&authKey=vcKUTZ914E0kdmjzUejxXxz4AlnckuE0rKJ8xDWvOvZWGkm3dIB%2BP4axUSHxo%2FXt&noverify=0&group_code=1076096725";
     tracing::info!("打开QQ群: {}", url);
     dialog::open_url(url);
 }
