@@ -1385,10 +1385,32 @@ fn show_alert(title: &str, message: &str) {
 fn open_pay_url() {
     tracing::info!("打开支付页面");
 
-    // 构建支付URL
-    let pay_url = format!("{}/pay", server_api_base());
-    tracing::info!("打开支付页面: {}", pay_url);
-    dialog::open_url(&pay_url);
+    // 使用本地存储的设备信息构建验证URL
+    let device_info = {
+        let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.device_info.clone()
+    };
+
+    if let Some(info) = device_info {
+        let timestamp = now_ms() / 1000;
+        let verify_data = format!(
+            "{}.{}.{}.{}",
+            info.product, info.deviceId, info.serial, timestamp
+        );
+        let encoded_data = encode(&verify_data);
+        let pay_url = format!(
+            "{}/api/v2/verify/Eternal?data={}",
+            server_api_base(),
+            encoded_data
+        );
+        tracing::info!("打开支付页面: {}", pay_url);
+        dialog::open_url(&pay_url);
+    } else {
+        // 没有设备信息，跳转到通用支付页
+        let pay_url = format!("{}/pay", server_api_base());
+        tracing::info!("打开通用支付页面: {}", pay_url);
+        dialog::open_url(&pay_url);
+    }
 }
 
 /// 删除设备本地授权信息
