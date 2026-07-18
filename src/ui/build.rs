@@ -1044,21 +1044,6 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         // API返回的是 {"status":200, "result": {...}}，需要先提取result
         let result = info.get("result").unwrap_or(info);
 
-        // userType
-        if let Some(user_type) = result.get("userType").and_then(|v| v.as_str()) {
-            // 如果是免费版，显示升级按钮
-            if user_type == "free" {
-                let upgrade_card = build_settings_card(
-                    icons::afd_svg(),
-                    "升级为付费版",
-                    Some("享受更多请求额度"),
-                    Some(build_more_link_icon()),
-                    Some(UPGRADE_TO_PAID_EVENT),
-                );
-                info_cards.push(upgrade_card);
-            }
-        }
-
         // 到期时间（订阅制）
         if let Some(expired_at) = result.get("expiredAt").and_then(|v| v.as_str()) {
             let expire_card = build_settings_card(
@@ -1089,6 +1074,8 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
 
     // 计费模式（放在请求用量下面）
     let mut billing_mode_card = None;
+    // 升级为付费版（放在计费模式下面，黄色样式）
+    let mut upgrade_card = None;
     if let Some(ref info) = state.server_device_info {
         let result = info.get("result").unwrap_or(info);
         if let Some(billing_mode) = result.get("billingMode").and_then(|v| v.as_str()) {
@@ -1099,6 +1086,20 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
                 None,
                 None,
             ));
+        }
+        // 如果是免费版，显示升级按钮（黄色样式，跳转支付页）
+        if let Some(user_type) = result.get("userType").and_then(|v| v.as_str()) {
+            if user_type == "free" {
+                upgrade_card = Some(build_settings_card_colored(
+                    icons::afd_svg(),
+                    "升级为付费版",
+                    Some("点击跳转至支付页面"),
+                    Some(build_more_link_icon()),
+                    Some(OPEN_PAY_URL_EVENT),
+                    "#FFB30026", // 黄色背景
+                    "#FFB300",   // 黄色文字
+                ));
+            }
         }
     }
 
@@ -1187,6 +1188,17 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         Some(OPEN_QQ_GROUP_EVENT),
     );
 
+    // 删除本地授权（红色警告样式）
+    let delete_auth_card = build_settings_card_colored(
+        icons::refresh_svg(),
+        "删除设备本地授权",
+        Some("删除所有存储的本地设备信息"),
+        None,
+        Some(DELETE_LOCAL_AUTH_EVENT),
+        "#F4433626", // 红色背景
+        "#F44336",   // 红色文字
+    );
+
     // 构建信息
     let build_title = build_section_title("构建信息");
 
@@ -1235,6 +1247,11 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         root = root.child(card);
     }
 
+    // 升级为付费版放在计费模式下面
+    if let Some(card) = upgrade_card {
+        root = root.child(card);
+    }
+
     root = root
         .child(refresh_button)
         .child(search_title)
@@ -1248,6 +1265,7 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
     root.child(more_title)
         .child(help_card)
         .child(qq_card)
+        .child(delete_auth_card)
         .child(build_title)
         .child(build_time_row)
         .child(build_user_row)
@@ -1413,10 +1431,23 @@ fn build_settings_card(
     right: Option<ui::Element>,
     click_event: Option<&str>,
 ) -> ui::Element {
+    build_settings_card_colored(icon_svg, title, desc, right, click_event, "#1E1E1F", "#FFFFFF")
+}
+
+/// 构建带自定义颜色的设置卡片
+fn build_settings_card_colored(
+    icon_svg: String,
+    title: &str,
+    desc: Option<&str>,
+    right: Option<ui::Element>,
+    click_event: Option<&str>,
+    bg_color: &str,
+    text_color: &str,
+) -> ui::Element {
     let icon = ui::Element::new(ui::ElementType::Svg, Some(&icon_svg))
         .width(22)
         .height(22)
-        .text_color("#FFFFFF");
+        .text_color(text_color);
 
     let icon_wrap = ui::Element::new(ui::ElementType::Div, None)
         .width(22)
@@ -1431,13 +1462,15 @@ fn build_settings_card(
         .flex_direction(ui::FlexDirection::Column)
         .width_full();
 
-    let title_el = ui::Element::new(ui::ElementType::P, Some(title)).size(15);
+    let title_el = ui::Element::new(ui::ElementType::P, Some(title))
+        .size(15)
+        .text_color(text_color);
     text_col = text_col.child(title_el);
 
     if let Some(desc_text) = desc {
         let desc_el = ui::Element::new(ui::ElementType::P, Some(desc_text))
             .size(13)
-            .text_color("#888888");
+            .text_color(text_color);
         text_col = text_col.child(desc_el);
     }
 
@@ -1446,7 +1479,7 @@ fn build_settings_card(
         .flex_direction(ui::FlexDirection::Row)
         .align_center()
         .width_full()
-        .bg("#1E1E1F")
+        .bg(bg_color)
         .radius(12)
         .padding_left(12)
         .padding_right(12)

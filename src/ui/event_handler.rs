@@ -23,6 +23,7 @@ pub const SELECT_CITY_DROPDOWN_EVENT: &str = "select_city_dropdown";
 pub const DELETE_CITY_PREFIX: &str = "delete_city:";
 pub const CHECK_PAYMENT_EVENT: &str = "check_payment";
 pub const UPGRADE_TO_PAID_EVENT: &str = "upgrade_to_paid";
+pub const OPEN_PAY_URL_EVENT: &str = "open_pay_url";
 pub const REFRESH_DEVICE_INFO_EVENT: &str = "refresh_device_info";
 pub const FREE_VERSION_EVENT: &str = "free_version";
 pub const OPEN_VERIFY_URL_EVENT: &str = "open_verify_url";
@@ -36,6 +37,8 @@ pub const SEARCH_NUMBER_EVENT: &str = "search_number";
 pub const TOGGLE_SEARCH_RESULTS_EVENT: &str = "toggle_search_results";
 pub const REFRESH_NOTICE_EVENT: &str = "refresh_notice";
 pub const OPEN_NOTICE_LINK_PREFIX: &str = "open_notice_link:";
+
+pub const DELETE_LOCAL_AUTH_EVENT: &str = "delete_local_auth";
 
 // ========== Interconnect消息处理 ==========
 
@@ -229,9 +232,11 @@ pub fn ui_event_processor(
         }
         CHECK_PAYMENT_EVENT => check_payment_status(),
         UPGRADE_TO_PAID_EVENT => start_verification(false),
+        OPEN_PAY_URL_EVENT => open_pay_url(),
         REFRESH_DEVICE_INFO_EVENT => refresh_device_info(),
         FREE_VERSION_EVENT => verify_free_version(),
         OPEN_VERIFY_URL_EVENT => open_verify_url_from_state(),
+        DELETE_LOCAL_AUTH_EVENT => delete_local_auth(),
         SELECT_CITY_DROPDOWN_EVENT => {
             let parsed_value = parse_event_value(event_payload);
             tracing::info!("SELECT_CITY_DROPDOWN_EVENT: payload={}, parsed={}", event_payload, parsed_value);
@@ -1374,6 +1379,72 @@ fn show_alert(title: &str, message: &str) {
             },
         ).await;
     });
+}
+
+/// 打开支付页面
+fn open_pay_url() {
+    tracing::info!("打开支付页面");
+
+    // 构建验证URL用于支付
+    let device_info = {
+        let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.device_info.clone()
+    };
+
+    if let Some(info) = device_info {
+        let timestamp = now_ms() / 1000;
+        let verify_data = format!(
+            "{}.{}.{}.{}",
+            info.product, info.deviceId, info.serial, timestamp
+        );
+        let encoded_data = encode(&verify_data);
+        let pay_url = format!(
+            "{}/api/v2/verify/Eternal?data={}",
+            server_api_base(),
+            encoded_data
+        );
+        tracing::info!("打开支付页面: {}", pay_url);
+        dialog::open_url(&pay_url);
+    } else {
+        show_alert("提示", "请先验证设备");
+    }
+}
+
+/// 删除设备本地授权信息
+fn delete_local_auth() {
+    tracing::info!("删除本地授权信息...");
+
+    // 清除所有本地存储的状态
+    {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.api_key.clear();
+        state.api_key_verified = false;
+        state.api_key_visible = false;
+        state.device_info = None;
+        state.server_device_info = None;
+        state.verification_status = VerificationStatus::NotStarted;
+        state.city_list.clear();
+        state.selected_city_index = None;
+        state.city_search_keyword.clear();
+        state.city_search_results.clear();
+        state.last_sync_time_ms = 0;
+        state.last_sync_location.clear();
+        state.sync_progress = SyncProgress::default();
+        state.notice_list.clear();
+        state.settings_loaded = false; // 允许下次重新加载
+    }
+
+    // 删除本地设置文件
+    let settings_file = "api_settings.json";
+    if std::path::Path::new(settings_file).exists() {
+        match std::fs::remove_file(settings_file) {
+            Ok(()) => tracing::info!("已删除本地设置文件"),
+            Err(e) => tracing::error!("删除设置文件失败: {}", e),
+        }
+    }
+
+    crate::ui::build::rerender_main_ui();
+    show_alert("成功", "本地授权信息已删除");
 }
 
 // ========== 公告 ==========

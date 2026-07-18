@@ -303,6 +303,11 @@ def main():
 
     env = os.environ.copy()
     ensure_rust_target_available(resolved_target)
+
+    # 收集构建信息并注入环境变量
+    build_info = collect_build_info(root_dir)
+    env.update(build_info)
+
     run_cargo_build(root_dir, cargo_args, env)
 
     metadata = load_cargo_metadata(root_dir)
