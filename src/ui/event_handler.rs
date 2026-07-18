@@ -1385,32 +1385,37 @@ fn show_alert(title: &str, message: &str) {
 fn open_pay_url() {
     tracing::info!("打开支付页面");
 
-    // 使用本地存储的设备信息构建验证URL
-    let device_info = {
+    // 优先使用服务器返回的设备信息
+    let server_info = {
         let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
-        state.device_info.clone()
+        state.server_device_info.clone()
     };
 
-    if let Some(info) = device_info {
-        let timestamp = now_ms() / 1000;
-        let verify_data = format!(
-            "{}.{}.{}.{}",
-            info.product, info.deviceId, info.serial, timestamp
-        );
-        let encoded_data = encode(&verify_data);
-        let pay_url = format!(
-            "{}/api/v2/verify/Eternal?data={}",
-            server_api_base(),
-            encoded_data
-        );
-        tracing::info!("打开支付页面: {}", pay_url);
-        dialog::open_url(&pay_url);
-    } else {
-        // 没有设备信息，跳转到通用支付页
-        let pay_url = format!("{}/pay", server_api_base());
-        tracing::info!("打开通用支付页面: {}", pay_url);
-        dialog::open_url(&pay_url);
+    if let Some(ref info) = server_info {
+        let result = info.get("result").unwrap_or(info);
+        // API返回: deviceID, onlyID
+        let device_id = result.get("deviceID").and_then(|v| v.as_str()).unwrap_or("");
+        let only_id = result.get("onlyID").and_then(|v| v.as_str()).unwrap_or("");
+
+        if !device_id.is_empty() || !only_id.is_empty() {
+            let timestamp = now_ms() / 1000;
+            let verify_data = format!(
+                "Eternal.{}.{}.{}",
+                device_id, only_id, timestamp
+            );
+            let encoded_data = encode(&verify_data);
+            let pay_url = format!(
+                "{}/api/v2/verify/Eternal?data={}",
+                server_api_base(),
+                encoded_data
+            );
+            tracing::info!("打开支付页面: {}", pay_url);
+            dialog::open_url(&pay_url);
+            return;
+        }
     }
+
+    show_alert("提示", "请先验证设备");
 }
 
 /// 删除设备本地授权信息
