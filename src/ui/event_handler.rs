@@ -47,8 +47,8 @@ pub const DELETE_ALL_BG_EVENT: &str = "delete_all_bg";
 pub const CANCEL_BG_UPLOAD_EVENT: &str = "cancel_bg_upload";
 
 // 背景上传分块与超时配置
-const BG_CHUNK_SIZE: usize = 10 * 1024; // 每块原始数据 10KB
-const BG_LARGE_FILE_THRESHOLD: usize = 10 * 1024; // 大于10KB给予二次确认
+const BG_CHUNK_SIZE: usize = 20 * 1024; // 每块原始数据 20KB
+const BG_LARGE_FILE_THRESHOLD: usize = 20 * 1024; // 大于20KB给予二次确认
 const BG_UPLOAD_TIMEOUT_MS: u64 = 20_000; // 单块上传超时 20 秒
 const BG_REFRESH_TIMEOUT_MS: u64 = 20_000; // 刷新/删除超时 20 秒
 const BG_TIMEOUT_PAYLOAD: &str = "bg_upload_timeout";
@@ -1747,12 +1747,12 @@ fn upload_background(name: String) {
 
         tracing::info!("选中文件: {}, 大小: {} 字节", picked.name, picked.data.len());
 
-        // 大于 10KB 给予二次确认（分块上传会比较慢）
+        // 大于 20KB 给予二次确认（分块上传会比较慢，且可能无法正常显示）
         if picked.data.len() > BG_LARGE_FILE_THRESHOLD {
             let size_kb = picked.data.len() as f64 / 1024.0;
             let chunks = picked.data.len().div_ceil(BG_CHUNK_SIZE).max(1);
             let msg = format!(
-                "图片较大（{:.1} KB），将分为 {} 块逐块上传，可能需要一些时间，是否继续？",
+                "图片较大（{:.1} KB），将分为 {} 块逐块上传，可能需要一些时间，并且可能无法正常显示，是否继续？",
                 size_kb, chunks
             );
             if !show_confirm("文件较大", &msg) {

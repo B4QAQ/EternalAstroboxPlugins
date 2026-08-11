@@ -763,7 +763,6 @@ fn build_background_tab(state: &UiState) -> ui::Element {
     let hint = ui::Element::new(ui::ElementType::P, Some("为每种天气上传自定义背景图（仅支持 PNG，自动分块上传）"))
         .size(12)
         .text_color("#888888");
-
     // 上传进度条（正在上传时显示）
     let upload_progress = if let Some(task) = &state.bg_upload {
         let percent = if task.total > 0 {
