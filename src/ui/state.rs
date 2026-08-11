@@ -24,6 +24,7 @@ fn default_bool_true() -> bool {
 pub enum MainTab {
     SyncData,
     CityManage,
+    Background,
     Notice,
     Settings,
 }
@@ -131,6 +132,13 @@ pub struct UiState {
     // 公告
     pub notice_list: Vec<NoticeInfo>,
     pub notice_loading: bool,
+
+    // 背景图管理
+    pub bg_supported: Vec<String>, // 支持自定义的全部天气背景名
+    pub bg_installed: Vec<String>, // 当前已安装的背景名
+    pub bg_loading: bool, // 是否正在加载背景信息
+    pub bg_uploading: Option<String>, // 正在上传的背景名（None表示空闲）
+    pub bg_layout_grid: bool, // 背景列表布局：true=网格，false=列表
 }
 
 /// 同步进度状态
@@ -198,6 +206,12 @@ pub fn ui_state() -> &'static RwLock<UiState> {
 
             notice_list: Vec::new(),
             notice_loading: false,
+
+            bg_supported: Vec::new(),
+            bg_installed: Vec::new(),
+            bg_loading: false,
+            bg_uploading: None,
+            bg_layout_grid: true,
         };
         RwLock::new(state)
     })

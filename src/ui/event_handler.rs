@@ -38,6 +38,12 @@ pub const TOGGLE_SEARCH_RESULTS_EVENT: &str = "toggle_search_results";
 pub const REFRESH_NOTICE_EVENT: &str = "refresh_notice";
 pub const OPEN_NOTICE_LINK_PREFIX: &str = "open_notice_link:";
 
+pub const TAB_BG_EVENT: &str = "tab_bg";
+pub const REFRESH_BG_EVENT: &str = "refresh_bg";
+pub const TOGGLE_BG_LAYOUT_EVENT: &str = "toggle_bg_layout";
+pub const UPLOAD_BG_PREFIX: &str = "upload_bg:";
+pub const DELETE_BG_PREFIX: &str = "delete_bg:";
+
 pub const DELETE_LOCAL_AUTH_EVENT: &str = "delete_local_auth";
 
 // ========== Interconnect消息处理 ==========
@@ -124,6 +130,60 @@ pub fn handle_interconnect_message(payload: &str) {
                     request_citylist_from_device();
                 }
             }
+            "GET_BG_INFO_DONE" => {
+                if status == "OK" {
+                    handle_bg_info_received(data);
+                } else {
+                    tracing::error!("获取背景信息失败: {}", status);
+                    set_bg_loading(false);
+                    show_alert("失败", &format!("获取背景信息失败: {}", status));
+                }
+            }
+            "UPLOAD_FILE_DONE" => {
+                if status == "OK" {
+                    tracing::info!("文件上传成功，刷新背景缓存");
+                    // 上传成功后自动刷新背景缓存
+                    request_refresh_bg();
+                } else {
+                    set_bg_uploading(None);
+                    set_bg_loading(false);
+                    show_alert("失败", &format!("背景上传失败: {}", status));
+                }
+            }
+            "DEL_FILE_DONE" => {
+                if status == "OK" {
+                    tracing::info!("文件删除成功，刷新背景缓存");
+                    request_refresh_bg();
+                } else {
+                    set_bg_loading(false);
+                    show_alert("失败", &format!("背景删除失败: {}", status));
+                }
+            }
+            "REFRESH_BG_DONE" => {
+                if status == "OK" {
+                    // 用返回的list更新已安装列表
+                    let installed = data
+                        .and_then(|d| d.get("list"))
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    {
+                        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        state.bg_installed = installed;
+                        state.bg_uploading = None;
+                        state.bg_loading = false;
+                    }
+                    crate::ui::build::rerender_main_ui();
+                } else {
+                    set_bg_uploading(None);
+                    set_bg_loading(false);
+                    show_alert("失败", &format!("背景刷新失败: {}", status));
+                }
+            }
             _ => {
                 tracing::info!("未处理的消息类型: {}", msg_type);
             }
@@ -146,12 +206,30 @@ pub fn ui_event_processor(
         SEND_BUTTON_EVENT => send_weather_data(),
         TAB_SYNC_EVENT => switch_tab(MainTab::SyncData),
         TAB_CITY_EVENT => switch_tab(MainTab::CityManage),
+        TAB_BG_EVENT => {
+            switch_tab(MainTab::Background);
+            // 首次进入背景图Tab时自动加载
+            let need_load = {
+                let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.bg_supported.is_empty() && !state.bg_loading
+            };
+            if need_load {
+                request_bg_info();
+            }
+        }
         TAB_NOTICE_EVENT => switch_tab(MainTab::Notice),
         TAB_SETTINGS_EVENT => switch_tab(MainTab::Settings),
         OPEN_HELP_DOC_EVENT => open_help_doc_page(),
         OPEN_QQ_GROUP_EVENT => open_qq_group_page(),
         ALERTS_SYNC_TOGGLE_EVENT => toggle_alerts_sync(),
         REFRESH_NOTICE_EVENT => fetch_notice_list(),
+        REFRESH_BG_EVENT => request_bg_info(),
+        TOGGLE_BG_LAYOUT_EVENT => {
+            let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.bg_layout_grid = !state.bg_layout_grid;
+            drop(state);
+            crate::ui::build::rerender_main_ui();
+        }
         DAYS_DROPDOWN_EVENT => {
             let parsed_value = parse_event_value(event_payload);
             if let Some(day_str) = parsed_value.strip_suffix('天') {
@@ -259,6 +337,20 @@ pub fn ui_event_processor(
             if let Ok(idx) = idx_str.parse::<usize>() {
                 add_city_to_device(idx);
             }
+        }
+    }
+
+    // 上传背景图
+    if event_id.starts_with(UPLOAD_BG_PREFIX) {
+        if let Some(name) = event_id.strip_prefix(UPLOAD_BG_PREFIX) {
+            upload_background(name.to_string());
+        }
+    }
+
+    // 删除背景图
+    if event_id.starts_with(DELETE_BG_PREFIX) {
+        if let Some(name) = event_id.strip_prefix(DELETE_BG_PREFIX) {
+            delete_background(name.to_string());
         }
     }
 
@@ -1487,4 +1579,157 @@ fn fetch_notice_list() {
         }
         crate::ui::build::rerender_main_ui();
     });
+}
+
+// ========== 背景图管理 ==========
+
+/// 向第一个已连接设备发送 interconnect 消息（辅助函数）
+async fn send_message_to_first_device(payload: &str) -> bool {
+    match get_device_addr().await {
+        Some(addr) => send_interconnect_message(&addr, payload).await,
+        None => {
+            tracing::error!("没有连接的设备");
+            show_alert("提示", "没有连接的设备");
+            false
+        }
+    }
+}
+
+/// 请求背景信息（GET_BG_INFO）
+fn request_bg_info() {
+    {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.bg_loading {
+            tracing::info!("背景信息正在加载中，忽略重复请求");
+            return;
+        }
+        state.bg_loading = true;
+    }
+    crate::ui::build::rerender_main_ui();
+
+    wit_bindgen::block_on(async move {
+        let payload = serde_json::json!({ "type": "GET_BG_INFO" }).to_string();
+        send_message_to_first_device(&payload).await;
+    });
+}
+
+/// 处理背景信息响应
+fn handle_bg_info_received(data: Option<&serde_json::Value>) {
+    let supported = data
+        .and_then(|d| d.get("supported"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let installed = data
+        .and_then(|d| d.get("installed"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    tracing::info!("背景信息: supported={:?}, installed={:?}", supported, installed);
+
+    {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.bg_supported = supported;
+        state.bg_installed = installed;
+        state.bg_loading = false;
+    }
+    crate::ui::build::rerender_main_ui();
+}
+
+/// 请求刷新背景缓存（REFRESH_BG）
+fn request_refresh_bg() {
+    set_bg_loading(true);
+    wit_bindgen::block_on(async move {
+        let payload = serde_json::json!({ "type": "REFRESH_BG" }).to_string();
+        send_message_to_first_device(&payload).await;
+    });
+}
+
+/// 上传背景图
+fn upload_background(name: String) {
+    tracing::info!("上传背景图: {}", name);
+
+    wit_bindgen::block_on(async move {
+        // 弹出文件选择器，只允许 PNG
+        let config = psys_host::dialog::PickConfig {
+            read: true,
+            copy_to: None,
+        };
+        let filter = psys_host::dialog::FilterConfig {
+            multiple: false,
+            extensions: vec!["png".to_string()],
+            default_directory: String::new(),
+            default_file_name: String::new(),
+        };
+
+        // pick_file 返回 PickResult（非 Result）
+        let picked = dialog::pick_file(&config, &filter).await;
+
+        if picked.data.is_empty() {
+            tracing::info!("未选择文件");
+            return;
+        }
+
+        tracing::info!("选中文件: {}, 大小: {} 字节", picked.name, picked.data.len());
+
+        // 标记正在上传
+        set_bg_uploading(Some(name.clone()));
+
+        // base64 编码
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let b64 = STANDARD.encode(&picked.data);
+
+        let uri = format!("internal://files/bg/{}.png", name);
+        let payload = serde_json::json!({
+            "type": "UPLOAD_FILE",
+            "data": {
+                "uri": uri,
+                "data": b64,
+                "append": false
+            }
+        }).to_string();
+
+        send_message_to_first_device(&payload).await;
+    });
+}
+
+/// 删除背景图
+fn delete_background(name: String) {
+    tracing::info!("删除背景图: {}", name);
+
+    set_bg_loading(true);
+    wit_bindgen::block_on(async move {
+        let uri = format!("internal://files/bg/{}.png", name);
+        let payload = serde_json::json!({
+            "type": "DEL_FILE",
+            "data": { "uri": uri }
+        }).to_string();
+        send_message_to_first_device(&payload).await;
+    });
+}
+
+/// 设置背景加载状态
+fn set_bg_loading(loading: bool) {
+    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.bg_loading = loading;
+    drop(state);
+    crate::ui::build::rerender_main_ui();
+}
+
+/// 设置正在上传的背景名
+fn set_bg_uploading(name: Option<String>) {
+    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.bg_uploading = name;
+    drop(state);
+    crate::ui::build::rerender_main_ui();
 }

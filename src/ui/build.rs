@@ -42,6 +42,7 @@ pub fn build_main_ui() -> ui::Element {
     let content = match state.current_tab {
         MainTab::SyncData => build_sync_tab(&state),
         MainTab::CityManage => build_city_manage_tab(&state),
+        MainTab::Background => build_background_tab(&state),
         MainTab::Notice => build_notice_tab(&state),
         MainTab::Settings => build_settings_tab(&state),
     };
@@ -100,6 +101,13 @@ fn build_tabs(state: &UiState) -> ui::Element {
         TAB_NOTICE_EVENT,
     );
 
+    let bg_trigger = build_tab_trigger(
+        "背景图",
+        icons::bg_svg(),
+        state.current_tab == MainTab::Background,
+        TAB_BG_EVENT,
+    );
+
     let settings_trigger = build_tab_trigger(
         "设置",
         icons::api_tab_svg(),
@@ -108,7 +116,7 @@ fn build_tabs(state: &UiState) -> ui::Element {
     );
 
     tabs_root
-        .child(tabs_list.child(sync_trigger).child(city_trigger).child(notice_trigger).child(settings_trigger))
+        .child(tabs_list.child(sync_trigger).child(city_trigger).child(bg_trigger).child(notice_trigger).child(settings_trigger))
 }
 
 fn build_tab_trigger(label: &str, icon_svg: String, is_active: bool, event_id: &str) -> ui::Element {
@@ -699,6 +707,279 @@ fn parse_notice_content(content: &str) -> Vec<NoticeSegment> {
     }
 
     segments
+}
+
+// ========== 背景图Tab ==========
+
+fn build_background_tab(state: &UiState) -> ui::Element {
+    let root = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .width_full()
+        .gap(8);
+
+    // 顶部操作行：标题 + 布局切换 + 刷新
+    let title = ui::Element::new(ui::ElementType::P, Some("背景图管理"))
+        .size(16)
+        .flex_shrink(0.0);
+
+    // 布局切换按钮（网格/列表）
+    let layout_icon = if state.bg_layout_grid {
+        icons::list_layout_svg()
+    } else {
+        icons::grid_layout_svg()
+    };
+    let layout_btn = build_icon_button_small(&layout_icon, TOGGLE_BG_LAYOUT_EVENT);
+
+    // 刷新按钮
+    let refresh_text = if state.bg_loading { "刷新中..." } else { "刷新" };
+    let refresh_btn = ui::Element::new(ui::ElementType::Button, Some(refresh_text))
+        .without_default_styles()
+        .on(ui::Event::Click, REFRESH_BG_EVENT)
+        .bg("#2A2A2A")
+        .text_color("#FFFFFF")
+        .radius(8)
+        .padding_left(12)
+        .padding_right(12)
+        .padding_top(6)
+        .padding_bottom(6)
+        .size(14)
+        .flex_shrink(0.0);
+
+    let spacer = ui::Element::new(ui::ElementType::Div, None).flex_grow(1.0);
+
+    let header = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
+        .width_full()
+        .gap(8)
+        .child(title)
+        .child(spacer)
+        .child(layout_btn)
+        .child(refresh_btn);
+
+    // 提示文字
+    let hint = ui::Element::new(ui::ElementType::P, Some("为每种天气上传自定义背景图（仅支持 PNG）"))
+        .size(12)
+        .text_color("#888888");
+
+    // 内容区
+    let content = if state.bg_loading && state.bg_supported.is_empty() {
+        ui::Element::new(ui::ElementType::P, Some("加载中..."))
+            .size(14)
+            .text_color("#888888")
+            .margin_top(12)
+    } else if state.bg_supported.is_empty() {
+        // 没有数据时显示刷新提示
+        ui::Element::new(ui::ElementType::P, Some("暂无背景信息，点击右上角刷新"))
+            .size(14)
+            .text_color("#888888")
+            .margin_top(12)
+    } else if state.bg_layout_grid {
+        // 网格布局（3列）
+        let mut grid = ui::Element::new(ui::ElementType::Grid, None)
+            .grid_template_columns("1fr 1fr 1fr")
+            .gap(8)
+            .width_full()
+            .margin_top(8);
+
+        for name in &state.bg_supported {
+            grid = grid.child(build_bg_grid_item(name, state.bg_installed.contains(name), state.bg_uploading.as_deref()));
+        }
+        grid
+    } else {
+        // 列表布局
+        let mut container = ui::Element::new(ui::ElementType::Div, None)
+            .flex()
+            .flex_direction(ui::FlexDirection::Column)
+            .gap(8)
+            .width_full()
+            .margin_top(8);
+
+        for name in &state.bg_supported {
+            container = container.child(build_bg_list_item(name, state.bg_installed.contains(name), state.bg_uploading.as_deref()));
+        }
+        container
+    };
+
+    root.child(header).child(hint).child(content)
+}
+
+/// 构建背景图网格项（紧凑卡片）
+fn build_bg_grid_item(name: &str, installed: bool, uploading: Option<&str>) -> ui::Element {
+    let is_uploading = uploading == Some(name);
+
+    // 状态点 + 名称
+    let status_color = if installed { "#4CAF50" } else { "#888888" };
+    let status_dot = ui::Element::new(ui::ElementType::Div, None)
+        .width(8)
+        .height(8)
+        .radius(999)
+        .bg(status_color)
+        .flex_shrink(0.0);
+
+    let name_text = ui::Element::new(ui::ElementType::P, Some(name))
+        .size(13)
+        .text_color(if installed { "#FFFFFF" } else { "#BBBBBB" });
+
+    let name_row = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
+        .gap(6)
+        .width_full()
+        .child(status_dot)
+        .child(name_text);
+
+    // 操作按钮文字
+    let btn_text = if is_uploading {
+        "上传中..."
+    } else if installed {
+        "替换"
+    } else {
+        "上传"
+    };
+    let btn_color = if installed { "#0090FF" } else { "#4CAF50" };
+
+    let action_btn = ui::Element::new(ui::ElementType::Button, Some(btn_text))
+        .without_default_styles()
+        .on(ui::Event::Click, &format!("{}{}", UPLOAD_BG_PREFIX, name))
+        .bg(&format!("{}26", btn_color))
+        .text_color(btn_color)
+        .radius(6)
+        .padding_top(4)
+        .padding_bottom(4)
+        .padding_left(8)
+        .padding_right(8)
+        .size(12)
+        .width_full();
+
+    let mut card = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Column)
+        .gap(6)
+        .bg("#1E1E1F")
+        .radius(10)
+        .padding(10)
+        .child(name_row)
+        .child(action_btn);
+
+    // 已安装的显示删除按钮
+    if installed && !is_uploading {
+        let delete_btn = ui::Element::new(ui::ElementType::Button, Some("删除"))
+            .without_default_styles()
+            .on(ui::Event::Click, &format!("{}{}", DELETE_BG_PREFIX, name))
+            .bg("#FF444426")
+            .text_color("#FF4444")
+            .radius(6)
+            .padding_top(4)
+            .padding_bottom(4)
+            .padding_left(8)
+            .padding_right(8)
+            .size(12)
+            .width_full();
+        card = card.child(delete_btn);
+    }
+
+    card
+}
+
+/// 构建背景图列表项（一行）
+fn build_bg_list_item(name: &str, installed: bool, uploading: Option<&str>) -> ui::Element {
+    let is_uploading = uploading == Some(name);
+
+    let status_text = if is_uploading {
+        "上传中..."
+    } else if installed {
+        "已安装"
+    } else {
+        "未安装"
+    };
+    let status_color = if installed { "#4CAF50" } else { "#888888" };
+
+    let name_text = ui::Element::new(ui::ElementType::P, Some(name))
+        .size(15)
+        .text_color("#FFFFFF")
+        .flex_shrink(0.0);
+
+    let status_label = ui::Element::new(ui::ElementType::P, Some(status_text))
+        .size(13)
+        .text_color(status_color)
+        .flex_shrink(0.0);
+
+    let spacer = ui::Element::new(ui::ElementType::Div, None).flex_grow(1.0);
+
+    // 上传/替换按钮
+    let upload_text = if is_uploading { "..." } else if installed { "替换" } else { "上传" };
+    let upload_color = if installed { "#0090FF" } else { "#4CAF50" };
+    let upload_btn = ui::Element::new(ui::ElementType::Button, Some(upload_text))
+        .without_default_styles()
+        .on(ui::Event::Click, &format!("{}{}", UPLOAD_BG_PREFIX, name))
+        .bg(&format!("{}26", upload_color))
+        .text_color(upload_color)
+        .radius(6)
+        .padding_left(10)
+        .padding_right(10)
+        .padding_top(5)
+        .padding_bottom(5)
+        .size(12)
+        .flex_shrink(0.0);
+
+    let mut row = ui::Element::new(ui::ElementType::Div, None)
+        .flex()
+        .flex_direction(ui::FlexDirection::Row)
+        .align_center()
+        .width_full()
+        .bg("#1E1E1F")
+        .radius(10)
+        .padding_left(12)
+        .padding_right(12)
+        .padding_top(10)
+        .padding_bottom(10)
+        .gap(8)
+        .child(name_text)
+        .child(spacer)
+        .child(status_label)
+        .child(upload_btn);
+
+    // 已安装的显示删除按钮
+    if installed && !is_uploading {
+        let delete_btn = ui::Element::new(ui::ElementType::Button, Some("删除"))
+            .without_default_styles()
+            .on(ui::Event::Click, &format!("{}{}", DELETE_BG_PREFIX, name))
+            .bg("#FF444426")
+            .text_color("#FF4444")
+            .radius(6)
+            .padding_left(10)
+            .padding_right(10)
+            .padding_top(5)
+            .padding_bottom(5)
+            .size(12)
+            .flex_shrink(0.0);
+        row = row.child(delete_btn);
+    }
+
+    row
+}
+
+/// 构建小图标按钮（用于布局切换）
+fn build_icon_button_small(icon_svg: &str, event_id: &str) -> ui::Element {
+    let icon = ui::Element::new(ui::ElementType::Svg, Some(icon_svg))
+        .width(16)
+        .height(16);
+
+    ui::Element::new(ui::ElementType::Button, None)
+        .without_default_styles()
+        .on(ui::Event::Click, event_id)
+        .bg("#2A2A2A")
+        .radius(8)
+        .width(32)
+        .height(32)
+        .flex()
+        .align_center()
+        .justify_center()
+        .child(icon)
 }
 
 // ========== 城市管理Tab ==========

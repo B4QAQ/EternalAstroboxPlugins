@@ -67,19 +67,61 @@ interface Message {
 
 ### 五、文件操作
 
+> 互联通道传输的是 JSON 文本，无法直接携带原生 `ArrayBuffer`。因此 `UPLOAD_FILE` 的 `data` 字段统一使用 **base64 编码字符串**（可带 data URI 前缀），手表端会自动解码并写入。
+
 #### 上传文件
 
 | 请求类型 | 响应类型 | 请求参数 | 响应数据 | 说明 |
 |---------|---------|---------|---------|------|
-| `UPLOAD_FILE` | `UPLOAD_FILE_DONE` | `{ uri: string, data: ArrayBuffer }` | `{ uri: string }` | 写入二进制文件到指定 URI |
+| `UPLOAD_FILE` | `UPLOAD_FILE_DONE` | 见下方 | `{ uri: string }` | 写入二进制文件到指定 URI |
 
-**注意**: `data` 参数为 `ArrayBuffer` 类型，用于传输二进制文件数据。
+**请求参数 `data`:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|-----|------|
+| `uri` | string | 是 | 目标文件 URI，父目录不存在时会自动创建 |
+| `data` | string \| ArrayBuffer | 是 | 文件内容；字符串时按 base64 解码（自动剥离 `data:...;base64,` 前缀） |
+| `append` | boolean | 否 | 是否追加模式，默认 `false`（覆盖写入）。为 `true` 时在文件末尾追加，此时 `position` 无效 |
+| `position` | number | 否 | 写入起始位置（字节偏移），仅在 `append` 为 `false` 时生效 |
+
+**注意事项**:
+- 二进制数据请先在手机端做 base64 编码后放入 `data`，直接传原始字节会因 JSON 序列化失败。
+- 目标 URI 的父目录若不存在，手表端会自动创建（如 `internal://files/bg/`）。
+- 背景图请上传为 PNG 格式，路径约定为 `internal://files/bg/<天气名>.png`（天气名见背景管理章节）。
 
 #### 删除文件
 
 | 请求类型 | 响应类型 | 请求参数 | 响应数据 | 说明 |
 |---------|---------|---------|---------|------|
 | `DEL_FILE` | `DEL_FILE_DONE` | `{ uri: string }` | `{ uri: string }` | 删除指定 URI 的文件 |
+
+---
+
+### 六、背景图管理
+
+手表支持为每种天气显示自定义背景图，背景文件存放于 `internal://files/bg/`。
+
+| 请求类型 | 响应类型 | 请求参数 | 响应数据 | 说明 |
+|---------|---------|---------|---------|------|
+| `REFRESH_BG` | `REFRESH_BG_DONE` | 无 | `{ list: string[] }` | 重新扫描背景目录，返回已存在的背景名数组；上传/删除背景后需调用以刷新手表缓存 |
+| `GET_BG_INFO` | `GET_BG_INFO_DONE` | 无 | `{ supported: string[], installed: string[] }` | 获取支持自定义的全部天气背景名（`supported`）与当前已安装的背景名（`installed`） |
+
+**背景命名规则**:
+- 文件名与天气图标名一致，仅支持 PNG，如 `sunny.png`、`rain-l.png`、`overcast.png`。
+- 完整列表可通过 `GET_BG_INFO` 获取，当前支持 17 种天气类别（加 `unknown` 兜底共 18 个名字）。
+- 上传后调用 `REFRESH_BG` 使手表立即生效；删除背景文件后同样需要调用。
+
+**`GET_BG_INFO_DONE` 响应示例:**
+```json
+{
+  "type": "GET_BG_INFO_DONE",
+  "status": "OK",
+  "data": {
+    "supported": ["sunny", "sunny-n", "cloudy", "rain-l", "rain-m", "overcast"],
+    "installed": ["sunny", "rain-l"]
+  }
+}
+```
 
 ---
 
@@ -275,13 +317,16 @@ interface Message {
 
 ### 7. 上传文件
 
+`data` 为文件内容的 base64 字符串。推荐手机端先将图片/二进制读为字节数组再 Base64 编码。
+
 **请求:**
 ```json
 {
   "type": "UPLOAD_FILE",
   "data": {
-    "uri": "internal://cache/example.png",
-    "data": "<ArrayBuffer 二进制数据>"
+    "uri": "internal://files/bg/sunny.png",
+    "data": "iVBORw0KGgoAAAANSUhEUgAA...(base64)",
+    "append": false
   }
 }
 ```
@@ -292,7 +337,7 @@ interface Message {
   "type": "UPLOAD_FILE_DONE",
   "status": "OK",
   "data": {
-    "uri": "internal://cache/example.png"
+    "uri": "internal://files/bg/sunny.png"
   }
 }
 ```
@@ -301,12 +346,17 @@ interface Message {
 ```json
 {
   "type": "UPLOAD_FILE_DONE",
-  "status": "写入失败: 1001",
+  "status": "写入失败: 300",
   "data": {
-    "uri": "internal://cache/example.png"
+    "uri": "internal://files/bg/sunny.png"
   }
 }
 ```
+
+**上传背景图的完整流程:**
+1. `UPLOAD_FILE` 写入 `internal://files/bg/<天气名>.png`（PNG，base64 编码）
+2. `REFRESH_BG` 通知手表刷新背景缓存
+3. 收到 `REFRESH_BG_DONE`（status 为 `OK`）后生效
 
 ---
 
@@ -335,6 +385,24 @@ interface Message {
 
 ---
 
+### 九、SimpleFetch 桥接网络（`SF_*`）
+
+当手机端安装了 AstroBox 插件并支持 SimpleFetch 时，手表可通过互联通道代理 HTTP 请求。所有桥接消息以 `SF_` 为前缀，手表端对 `SF_` 消息单独路由，不触发未知消息提示。
+
+| 消息类型 | 方向 | 说明 |
+|---------|------|------|
+| `SF_HANDSHAKE` | 手机→手表 | 手机端发起桥接握手，手表收到后激活桥接并回复 ACK |
+| `SF_HANDSHAKE_ACK` | 手表→手机 | 握手确认 |
+| `SF_PING` / `SF_PONG` | 双向 | 心跳保活（手表每 10s 发 PING，5s 未收到 PONG 则断开桥接） |
+| `SF_REQUEST` | 手表→手机 | 发起代理请求（普通 fetch 或 SSE） |
+| `SF_RESPONSE` | 手机→手表 | 返回响应；大体积响应以 base64 分片传输（`chunk`/`totalChunks`） |
+| `SF_CLOSE` | 手表→手机 | 关闭 SSE 连接 |
+| `SF_SSE_EVENT` / `SF_SSE_END` / `SF_SSE_ERROR` | 手机→手表 | SSE 事件推送 / 结束 / 错误 |
+
+桥接激活期间 `global.NetworkStatus` 为 `bridge`，手表的天气等网络请求会改走 SimpleFetch 通道；连接断开后自动切回原生网络。
+
+---
+
 ## 连接状态
 
 | 状态码 | 含义 |
@@ -358,9 +426,9 @@ interface Message {
 
 ## 错误处理
 
-1. 所有操作失败时，响应消息的 `status` 字段会包含错误描述
-2. 接收到带有错误状态的消息时，手表端会弹出错误提示
-3. 未知的消息类型会被忽略并记录日志
+1. 所有操作失败时，响应消息的 `status` 字段会包含错误描述（非 `OK`）。
+2. 接收到带有错误状态的消息时，手表端会弹出错误提示；但 `SF_` 前缀的桥接消息由 SimpleFetch 模块自行处理，不弹全局提示。
+3. 以 `SF_` 开头的消息会被路由到 SimpleFetch 模块，其他未知消息类型会弹出警告并记录日志。
 
 ---
 
@@ -466,3 +534,4 @@ interface DeviceInfo {
 | 版本 | 日期 | 说明 |
 |-----|------|------|
 | 1.0 | 2026-07 | 初始版本 |
+| 1.1 | 2026-08 | 文件上传改为 base64 传输并支持 append/position/自动建目录；新增背景管理 `REFRESH_BG`/`GET_BG_INFO`；补充 SimpleFetch 桥接 `SF_*` 协议 |
