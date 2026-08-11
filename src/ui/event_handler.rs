@@ -47,7 +47,11 @@ pub const DELETE_ALL_BG_EVENT: &str = "delete_all_bg";
 pub const CANCEL_BG_UPLOAD_EVENT: &str = "cancel_bg_upload";
 
 // 背景上传分块与超时配置
-const BG_CHUNK_SIZE: usize = 20 * 1024; // 每块原始数据 20KB
+// 重要：分块大小必须是 3 的倍数！base64 每 3 字节编码为 4 字符，
+// 只有按 3 的倍数分块，每块独立 base64 后才不会产生 padding，
+// Vela 端逐块 atob 解码再 append 时字节才不会错位。
+// 20478 = 6826 * 3，最接近 20KB 的 3 的倍数。
+const BG_CHUNK_SIZE: usize = 20478; // 每块原始数据约 20KB（3的倍数）
 const BG_LARGE_FILE_THRESHOLD: usize = 20 * 1024; // 大于20KB给予二次确认
 const BG_UPLOAD_TIMEOUT_MS: u64 = 20_000; // 单块上传超时 20 秒
 const BG_REFRESH_TIMEOUT_MS: u64 = 20_000; // 刷新/删除超时 20 秒
