@@ -912,15 +912,17 @@ fn send_weather_data() {
         return;
     }
 
-    let city = match selected_idx {
-        Some(idx) if idx < city_list.len() => &city_list[idx],
-        _ => {
-            show_alert("提示", "请先选择城市");
-            return;
-        }
+    // 确定使用的城市：优先用选中的，没选中则用第一个
+    let (city, city_index) = if city_list.is_empty() {
+        show_alert("提示", "请先添加城市");
+        return;
+    } else {
+        let idx = selected_idx
+            .filter(|&i| i < city_list.len())
+            .unwrap_or(0);
+        (&city_list[idx], idx)
     };
 
-    let city_index = selected_idx.unwrap_or(0);
     let city_clone = city.clone();
     let api_key_clone = api_key.clone();
     let sync_alerts_clone = sync_alerts;
@@ -1197,6 +1199,26 @@ fn handle_citylist_received(cities: &[serde_json::Value]) {
         let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.city_list = city_list;
         state.city_list_loading = false; // 重置加载状态
+
+        // 选中索引越界时重置为None
+        if let Some(idx) = state.selected_city_index {
+            if idx >= state.city_list.len() {
+                state.selected_city_index = None;
+            }
+        }
+
+        // 如果没有选中城市但列表不为空，自动选中第一个
+        if state.selected_city_index.is_none() && !state.city_list.is_empty() {
+            // 先克隆城市数据避免借用冲突
+            let city = state.city_list[0].clone();
+            state.selected_city_index = Some(0);
+            state.selected_location_id = city.name.clone();
+            state.selected_location_name = city.name;
+            state.selected_location_adm1 = city.adm1;
+            state.selected_location_adm2 = city.adm2;
+            state.selected_location_lat = city.lat;
+            state.selected_location_lon = city.lon;
+        }
     }
 
     let _ = crate::ui::state::save_all_settings();
