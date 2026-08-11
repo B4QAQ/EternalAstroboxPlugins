@@ -139,6 +139,18 @@ pub struct UiState {
     pub bg_loading: bool, // 是否正在加载背景信息
     pub bg_uploading: Option<String>, // 正在上传的背景名（None表示空闲）
     pub bg_layout_grid: bool, // 背景列表布局：true=网格，false=列表
+    pub bg_upload: Option<BgUploadTask>, // 当前分块上传任务
+    pub bg_deleting_all: bool, // 是否正在删除所有背景
+}
+
+/// 背景图分块上传任务
+#[derive(Clone, Default)]
+pub struct BgUploadTask {
+    pub name: String,        // 天气背景名
+    pub data: Vec<u8>,       // 原始文件字节
+    pub total: usize,        // 总块数
+    pub current: usize,      // 已发送块数（0-based，等于下一块索引）
+    pub timer_id: Option<u64>, // 超时定时器ID
 }
 
 /// 同步进度状态
@@ -212,6 +224,8 @@ pub fn ui_state() -> &'static RwLock<UiState> {
             bg_loading: false,
             bg_uploading: None,
             bg_layout_grid: true,
+            bg_upload: None,
+            bg_deleting_all: false,
         };
         RwLock::new(state)
     })

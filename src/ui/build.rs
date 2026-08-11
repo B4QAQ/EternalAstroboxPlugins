@@ -760,9 +760,55 @@ fn build_background_tab(state: &UiState) -> ui::Element {
         .child(refresh_btn);
 
     // 提示文字
-    let hint = ui::Element::new(ui::ElementType::P, Some("为每种天气上传自定义背景图（仅支持 PNG）"))
+    let hint = ui::Element::new(ui::ElementType::P, Some("为每种天气上传自定义背景图（仅支持 PNG，自动分块上传）"))
         .size(12)
         .text_color("#888888");
+
+    // 上传进度条（正在上传时显示）
+    let upload_progress = if let Some(task) = &state.bg_upload {
+        let percent = if task.total > 0 {
+            (task.current as u32 * 100 / task.total as u32).min(100)
+        } else {
+            0
+        };
+        let progress_text = format!(
+            "正在上传 {}：{}/{} 块 ({}%)",
+            task.name, task.current, task.total, percent
+        );
+
+        let progress_label = ui::Element::new(ui::ElementType::P, Some(&progress_text))
+            .size(13)
+            .text_color("#FF9800");
+
+        let progress_bar = ui::Element::new(ui::ElementType::Progress, None)
+            .width_full()
+            .height(12)
+            .prop("value", &percent.to_string());
+
+        ui::Element::new(ui::ElementType::Div, None)
+            .flex()
+            .flex_direction(ui::FlexDirection::Column)
+            .width_full()
+            .bg("#1E1E1F")
+            .radius(10)
+            .padding(12)
+            .gap(6)
+            .margin_top(4)
+            .child(progress_label)
+            .child(progress_bar)
+    } else {
+        ui::Element::new(ui::ElementType::Div, None)
+    };
+
+    // 计算当前上传进度，传给列表项
+    let upload_info = state.bg_upload.as_ref().map(|t| {
+        let percent = if t.total > 0 {
+            (t.current as u32 * 100 / t.total as u32).min(100)
+        } else {
+            0
+        };
+        (t.name.clone(), t.current, t.total, percent)
+    });
 
     // 内容区
     let content = if state.bg_loading && state.bg_supported.is_empty() {
@@ -785,7 +831,10 @@ fn build_background_tab(state: &UiState) -> ui::Element {
             .margin_top(8);
 
         for name in &state.bg_supported {
-            grid = grid.child(build_bg_grid_item(name, state.bg_installed.contains(name), state.bg_uploading.as_deref()));
+            let item_progress = upload_info.as_ref()
+                .filter(|(n, ..)| n == name)
+                .map(|(.., p)| *p);
+            grid = grid.child(build_bg_grid_item(name, state.bg_installed.contains(name), state.bg_uploading.as_deref(), item_progress));
         }
         grid
     } else {
@@ -798,16 +847,19 @@ fn build_background_tab(state: &UiState) -> ui::Element {
             .margin_top(8);
 
         for name in &state.bg_supported {
-            container = container.child(build_bg_list_item(name, state.bg_installed.contains(name), state.bg_uploading.as_deref()));
+            let item_progress = upload_info.as_ref()
+                .filter(|(n, ..)| n == name)
+                .map(|(.., p)| *p);
+            container = container.child(build_bg_list_item(name, state.bg_installed.contains(name), state.bg_uploading.as_deref(), item_progress));
         }
         container
     };
 
-    root.child(header).child(hint).child(content)
+    root.child(header).child(hint).child(upload_progress).child(content)
 }
 
 /// 构建背景图网格项（紧凑卡片）
-fn build_bg_grid_item(name: &str, installed: bool, uploading: Option<&str>) -> ui::Element {
+fn build_bg_grid_item(name: &str, installed: bool, uploading: Option<&str>, progress: Option<u32>) -> ui::Element {
     let is_uploading = uploading == Some(name);
 
     // 状态点 + 名称
@@ -834,15 +886,15 @@ fn build_bg_grid_item(name: &str, installed: bool, uploading: Option<&str>) -> u
 
     // 操作按钮文字
     let btn_text = if is_uploading {
-        "上传中..."
+        format!("上传中 {}%", progress.unwrap_or(0))
     } else if installed {
-        "替换"
+        "替换".to_string()
     } else {
-        "上传"
+        "上传".to_string()
     };
-    let btn_color = if installed { "#0090FF" } else { "#4CAF50" };
+    let btn_color = if is_uploading { "#FF9800" } else if installed { "#0090FF" } else { "#4CAF50" };
 
-    let action_btn = ui::Element::new(ui::ElementType::Button, Some(btn_text))
+    let action_btn = ui::Element::new(ui::ElementType::Button, Some(&btn_text))
         .without_default_styles()
         .on(ui::Event::Click, &format!("{}{}", UPLOAD_BG_PREFIX, name))
         .bg(&format!("{}26", btn_color))
@@ -865,7 +917,18 @@ fn build_bg_grid_item(name: &str, installed: bool, uploading: Option<&str>) -> u
         .child(name_row)
         .child(action_btn);
 
-    // 已安装的显示删除按钮
+    // 上传中显示进度条
+    if is_uploading {
+        if let Some(pct) = progress {
+            let bar = ui::Element::new(ui::ElementType::Progress, None)
+                .width_full()
+                .height(8)
+                .prop("value", &pct.to_string());
+            card = card.child(bar);
+        }
+    }
+
+    // 已安装且未在上传时显示删除按钮
     if installed && !is_uploading {
         let delete_btn = ui::Element::new(ui::ElementType::Button, Some("删除"))
             .without_default_styles()
@@ -885,34 +948,34 @@ fn build_bg_grid_item(name: &str, installed: bool, uploading: Option<&str>) -> u
     card
 }
 
-/// 构建背景图列表项（一行）
-fn build_bg_list_item(name: &str, installed: bool, uploading: Option<&str>) -> ui::Element {
+/// 构建背景图列表项（一行；上传时在下方显示进度条）
+fn build_bg_list_item(name: &str, installed: bool, uploading: Option<&str>, progress: Option<u32>) -> ui::Element {
     let is_uploading = uploading == Some(name);
 
     let status_text = if is_uploading {
-        "上传中..."
+        format!("上传中 {}%", progress.unwrap_or(0))
     } else if installed {
-        "已安装"
+        "已安装".to_string()
     } else {
-        "未安装"
+        "未安装".to_string()
     };
-    let status_color = if installed { "#4CAF50" } else { "#888888" };
+    let status_color = if is_uploading { "#FF9800" } else if installed { "#4CAF50" } else { "#888888" };
 
     let name_text = ui::Element::new(ui::ElementType::P, Some(name))
         .size(15)
         .text_color("#FFFFFF")
         .flex_shrink(0.0);
 
-    let status_label = ui::Element::new(ui::ElementType::P, Some(status_text))
+    let status_label = ui::Element::new(ui::ElementType::P, Some(&status_text))
         .size(13)
         .text_color(status_color)
         .flex_shrink(0.0);
 
     let spacer = ui::Element::new(ui::ElementType::Div, None).flex_grow(1.0);
 
-    // 上传/替换按钮
+    // 上传/替换按钮（上传中禁用点击，显示省略号）
     let upload_text = if is_uploading { "..." } else if installed { "替换" } else { "上传" };
-    let upload_color = if installed { "#0090FF" } else { "#4CAF50" };
+    let upload_color = if is_uploading { "#FF9800" } else if installed { "#0090FF" } else { "#4CAF50" };
     let upload_btn = ui::Element::new(ui::ElementType::Button, Some(upload_text))
         .without_default_styles()
         .on(ui::Event::Click, &format!("{}{}", UPLOAD_BG_PREFIX, name))
@@ -931,19 +994,13 @@ fn build_bg_list_item(name: &str, installed: bool, uploading: Option<&str>) -> u
         .flex_direction(ui::FlexDirection::Row)
         .align_center()
         .width_full()
-        .bg("#1E1E1F")
-        .radius(10)
-        .padding_left(12)
-        .padding_right(12)
-        .padding_top(10)
-        .padding_bottom(10)
         .gap(8)
         .child(name_text)
         .child(spacer)
         .child(status_label)
         .child(upload_btn);
 
-    // 已安装的显示删除按钮
+    // 已安装且未在上传时显示删除按钮
     if installed && !is_uploading {
         let delete_btn = ui::Element::new(ui::ElementType::Button, Some("删除"))
             .without_default_styles()
@@ -960,7 +1017,37 @@ fn build_bg_list_item(name: &str, installed: bool, uploading: Option<&str>) -> u
         row = row.child(delete_btn);
     }
 
-    row
+    // 上传中：用列容器包一行内容 + 进度条；否则直接返回带背景的行
+    if is_uploading {
+        let mut wrapper = ui::Element::new(ui::ElementType::Div, None)
+            .flex()
+            .flex_direction(ui::FlexDirection::Column)
+            .width_full()
+            .bg("#1E1E1F")
+            .radius(10)
+            .padding_left(12)
+            .padding_right(12)
+            .padding_top(10)
+            .padding_bottom(10)
+            .gap(8)
+            .child(row);
+
+        if let Some(pct) = progress {
+            let bar = ui::Element::new(ui::ElementType::Progress, None)
+                .width_full()
+                .height(10)
+                .prop("value", &pct.to_string());
+            wrapper = wrapper.child(bar);
+        }
+        wrapper
+    } else {
+        row.bg("#1E1E1F")
+            .radius(10)
+            .padding_left(12)
+            .padding_right(12)
+            .padding_top(10)
+            .padding_bottom(10)
+    }
 }
 
 /// 构建小图标按钮（用于布局切换）
@@ -1480,6 +1567,17 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         "#F44336",   // 红色文字
     );
 
+    // 删除所有背景图（红色警告样式，与删除本地授权一致）
+    let delete_all_bg_card = build_settings_card_colored(
+        icons::bg_svg(),
+        "删除所有背景图",
+        Some("删除手表上已安装的全部自定义背景图"),
+        None,
+        Some(DELETE_ALL_BG_EVENT),
+        "#F4433626",
+        "#F44336",
+    );
+
     // 构建信息
     let build_title = build_section_title("构建信息");
 
@@ -1547,6 +1645,7 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         .child(help_card)
         .child(qq_card)
         .child(delete_auth_card)
+        .child(delete_all_bg_card)
         .child(build_title)
         .child(build_time_row)
         .child(build_user_row)
