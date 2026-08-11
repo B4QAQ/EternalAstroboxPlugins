@@ -778,12 +778,36 @@ fn build_background_tab(state: &UiState) -> ui::Element {
 
         let progress_label = ui::Element::new(ui::ElementType::P, Some(&progress_text))
             .size(13)
-            .text_color("#FF9800");
+            .text_color("#FF9800")
+            .flex_grow(1.0);
 
         let progress_bar = ui::Element::new(ui::ElementType::Progress, None)
             .width_full()
             .height(12)
             .prop("value", &percent.to_string());
+
+        // 终止上传按钮
+        let cancel_btn = ui::Element::new(ui::ElementType::Button, Some("终止"))
+            .without_default_styles()
+            .on(ui::Event::Click, CANCEL_BG_UPLOAD_EVENT)
+            .bg("#FF444426")
+            .text_color("#FF4444")
+            .radius(6)
+            .padding_left(10)
+            .padding_right(10)
+            .padding_top(4)
+            .padding_bottom(4)
+            .size(12)
+            .flex_shrink(0.0);
+
+        let label_row = ui::Element::new(ui::ElementType::Div, None)
+            .flex()
+            .flex_direction(ui::FlexDirection::Row)
+            .align_center()
+            .width_full()
+            .gap(8)
+            .child(progress_label)
+            .child(cancel_btn);
 
         ui::Element::new(ui::ElementType::Div, None)
             .flex()
@@ -794,7 +818,7 @@ fn build_background_tab(state: &UiState) -> ui::Element {
             .padding(12)
             .gap(6)
             .margin_top(4)
-            .child(progress_label)
+            .child(label_row)
             .child(progress_bar)
     } else {
         ui::Element::new(ui::ElementType::Div, None)

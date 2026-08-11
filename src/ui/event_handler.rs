@@ -44,9 +44,11 @@ pub const TOGGLE_BG_LAYOUT_EVENT: &str = "toggle_bg_layout";
 pub const UPLOAD_BG_PREFIX: &str = "upload_bg:";
 pub const DELETE_BG_PREFIX: &str = "delete_bg:";
 pub const DELETE_ALL_BG_EVENT: &str = "delete_all_bg";
+pub const CANCEL_BG_UPLOAD_EVENT: &str = "cancel_bg_upload";
 
 // 背景上传分块与超时配置
 const BG_CHUNK_SIZE: usize = 10 * 1024; // 每块原始数据 10KB
+const BG_LARGE_FILE_THRESHOLD: usize = 10 * 1024; // 大于10KB给予二次确认
 const BG_UPLOAD_TIMEOUT_MS: u64 = 20_000; // 单块上传超时 20 秒
 const BG_REFRESH_TIMEOUT_MS: u64 = 20_000; // 刷新/删除超时 20 秒
 const BG_TIMEOUT_PAYLOAD: &str = "bg_upload_timeout";
@@ -242,6 +244,7 @@ pub fn ui_event_processor(
         REFRESH_NOTICE_EVENT => fetch_notice_list(),
         REFRESH_BG_EVENT => request_bg_info(),
         DELETE_ALL_BG_EVENT => delete_all_backgrounds(),
+        CANCEL_BG_UPLOAD_EVENT => cancel_background_upload(),
         TOGGLE_BG_LAYOUT_EVENT => {
             let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
             state.bg_layout_grid = !state.bg_layout_grid;
@@ -1461,6 +1464,36 @@ fn show_alert(title: &str, message: &str) {
     });
 }
 
+/// 显示确认对话框，返回用户是否点击"确定"
+fn show_confirm(title: &str, message: &str) -> bool {
+    let title_str = title.to_string();
+    let message_str = message.to_string();
+
+    wit_bindgen::block_on(async move {
+        let result = dialog::show_dialog(
+            dialog::DialogType::Alert,
+            dialog::DialogStyle::Website,
+            &dialog::DialogInfo {
+                title: title_str,
+                content: message_str,
+                buttons: vec![
+                    dialog::DialogButton {
+                        id: "cancel".to_string(),
+                        primary: false,
+                        content: "取消".to_string(),
+                    },
+                    dialog::DialogButton {
+                        id: "ok".to_string(),
+                        primary: true,
+                        content: "确定".to_string(),
+                    },
+                ],
+            },
+        ).await;
+        result.clicked_btn_id == "ok"
+    })
+}
+
 /// 打开支付页面（升级为付费版）
 fn open_pay_url() {
     tracing::info!("打开支付页面");
@@ -1714,6 +1747,19 @@ fn upload_background(name: String) {
 
         tracing::info!("选中文件: {}, 大小: {} 字节", picked.name, picked.data.len());
 
+        // 大于 10KB 给予二次确认（分块上传会比较慢）
+        if picked.data.len() > BG_LARGE_FILE_THRESHOLD {
+            let size_kb = picked.data.len() as f64 / 1024.0;
+            let chunks = picked.data.len().div_ceil(BG_CHUNK_SIZE).max(1);
+            let msg = format!(
+                "图片较大（{:.1} KB），将分为 {} 块逐块上传，可能需要一些时间，是否继续？",
+                size_kb, chunks
+            );
+            if !show_confirm("文件较大", &msg) {
+                return;
+            }
+        }
+
         // 计算分块
         let total = picked.data.len().div_ceil(BG_CHUNK_SIZE).max(1);
         let task = BgUploadTask {
@@ -1900,6 +1946,43 @@ fn finish_bg_upload() {
         });
     }
     crate::ui::build::rerender_main_ui();
+}
+
+/// 用户主动取消上传：停止任务 + 删除已上传的部分文件
+fn cancel_background_upload() {
+    // 取出任务信息并清除定时器
+    let (name, timer_id) = {
+        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let task = state.bg_upload.take();
+        state.bg_uploading = None;
+        state.bg_loading = false;
+        match task {
+            Some(t) => (t.name, t.timer_id),
+            None => return,
+        }
+    };
+
+    if let Some(tid) = timer_id {
+        wit_bindgen::block_on(async move {
+            psys_host::timer::clear_timer(tid).await;
+        });
+    }
+    crate::ui::build::rerender_main_ui();
+
+    // 删除已上传的部分文件，避免残留
+    tracing::info!("用户取消上传，删除部分文件: {}", name);
+    wit_bindgen::block_on(async move {
+        if get_device_addr().await.is_some() {
+            let uri = format!("internal://files/bg/{}.png", name);
+            let payload = serde_json::json!({
+                "type": "DEL_FILE",
+                "data": { "uri": uri }
+            }).to_string();
+            send_message_to_first_device(&payload).await;
+        }
+    });
+
+    show_alert("提示", "已取消上传");
 }
 
 /// 删除单个背景图
