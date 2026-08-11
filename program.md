@@ -2,6 +2,54 @@
 
 ## 版本历史
 
+### v3.3.20 (2026-07-17)
+
+**新增背景图管理 Tab**
+
+#### 新功能
+
+1. **背景图管理 Tab**
+   - 进入 Tab 自动发送 `GET_BG_INFO` 获取支持的天气背景名（supported）与已安装列表（installed）
+   - 支持网格（3列）/列表两种布局，点击右上角图标切换
+   - 每个天气背景支持：上传/替换（未安装为绿色"上传"，已安装为蓝色"替换"）、删除（已安装显示红色"删除"）
+   - 上传：`dialog::pick_file` 选择 PNG → base64 编码 → `UPLOAD_FILE` 写入 `internal://files/bg/<天气名>.png` → 收到 `UPLOAD_FILE_DONE` 后自动 `REFRESH_BG`
+   - 删除：`DEL_FILE` → 收到 `DEL_FILE_DONE` 后自动 `REFRESH_BG`
+   - `REFRESH_BG_DONE` 返回最新 list，更新已安装列表与上传/加载状态
+
+2. **新增图标**
+   - `bg_svg()`：背景图 Tab 图标（你提供的图片图标，viewBox 0 0 1024 1024）
+   - `grid_layout_svg()` / `list_layout_svg()`：布局切换图标
+
+#### 技术要点
+
+- `dialog::pick_file(&PickConfig, &FilterConfig) -> PickResult`：接收引用参数，直接返回 `PickResult`（非 Result）
+- 文件内容 `picked.data` 为 `Vec<u8>`，经 `STANDARD.encode` 转 base64 放入 `data` 字段
+- 新增状态：`bg_supported`、`bg_installed`、`bg_loading`、`bg_uploading: Option<String>`、`bg_layout_grid: bool`
+- 新增事件常量：`TAB_BG_EVENT`、`REFRESH_BG_EVENT`、`TOGGLE_BG_LAYOUT_EVENT`、`UPLOAD_BG_PREFIX`、`DELETE_BG_PREFIX`
+
+---
+
+### v3.3.19 (2026-07-17)
+
+**修复首次使用同步问题**
+
+- 添加第一个城市后收到 `CITYLIST` 自动选中第一个城市（填充 selected_location_*）
+- 删除城市导致索引越界时自动重置
+- 同步时若未显式选中城市但列表非空，回退使用第一个城市
+
+---
+
+### v3.3.18 (2026-07-16)
+
+**验证与设置页调整**
+
+- "升级为付费版"使用服务器返回的 `deviceID`/`onlyID` 构建支付 URL
+- 计费模式卡片移到请求用量下方
+- RSA 签名验证当前已跳过（直接写入 APIKey）
+- 设备激活页不再自动跳转，由用户手动点击
+
+---
+
 ### v3.1.6 (2026-07-16)
 
 **数据同步功能完善**
@@ -36,6 +84,10 @@
 | `api_tab_svg()` | 滑块图标 - 设置Tab |
 | `send_tab_svg()` | 发送箭头 - 同步Tab |
 | `refresh_svg()` | 刷新箭头 - 检查付款 |
+| `notice_svg()` | 喇叭图标 - 公告Tab |
+| `bg_svg()` | 图片图标 - 背景图Tab |
+| `grid_layout_svg()` | 网格图标 - 布局切换 |
+| `list_layout_svg()` | 列表图标 - 布局切换 |
 
 ---
 
@@ -238,6 +290,14 @@ WEATHER_API_KEY=your-api-key
 | PUT_CITY | 插件→设备 | 添加城市 |
 | DEL_CITY | 插件→设备 | 删除城市 |
 | PUT_WEATHERDATA | 插件→设备 | 同步天气数据 |
+| GET_BG_INFO | 插件→设备 | 获取支持/已安装的背景图列表 |
+| GET_BG_INFO_DONE | 设备→插件 | 返回 supported/installed 背景名 |
+| UPLOAD_FILE | 插件→设备 | 上传文件（base64） |
+| UPLOAD_FILE_DONE | 设备→插件 | 文件写入完成 |
+| DEL_FILE | 插件→设备 | 删除文件 |
+| DEL_FILE_DONE | 设备→插件 | 文件删除完成 |
+| REFRESH_BG | 插件→设备 | 刷新背景缓存 |
+| REFRESH_BG_DONE | 设备→插件 | 返回最新背景 list |
 
 ---
 
