@@ -49,8 +49,9 @@ pub enum NoticeSegment {
     QrCode { url: String, alt: String },
 }
 
-/// 设备信息结构（只保留验证和显示需要的字段）
+/// 设备信息结构（字段名匹配设备API返回，允许非snake_case）
 #[derive(Clone, serde::Serialize, serde::Deserialize, Default)]
+#[allow(non_snake_case)]
 pub struct DeviceInfo {
     // 验证需要的字段
     pub product: String,

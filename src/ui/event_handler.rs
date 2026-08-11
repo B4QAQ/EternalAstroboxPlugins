@@ -397,29 +397,6 @@ fn select_city_by_name(name: &str) {
     }
 }
 
-fn select_sync_city(idx: usize) {
-    let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if idx < state.city_list.len() {
-        let city = &state.city_list[idx];
-        let name = city.name.clone();
-        let adm1 = city.adm1.clone();
-        let adm2 = city.adm2.clone();
-        let lat = city.lat.clone();
-        let lon = city.lon.clone();
-
-        state.selected_city_index = Some(idx);
-        state.selected_location_id = name.clone();
-        state.selected_location_name = name;
-        state.selected_location_adm1 = adm1;
-        state.selected_location_adm2 = adm2;
-        state.selected_location_lat = lat;
-        state.selected_location_lon = lon;
-    }
-    drop(state);
-    let _ = crate::ui::state::save_all_settings();
-    crate::ui::build::rerender_main_ui();
-}
-
 // ========== 验证流程 ==========
 
 fn handle_apikey_received(api_key: &str) {
@@ -523,28 +500,6 @@ fn open_verify_url_from_state() {
     } else {
         show_alert("错误", "设备信息缺失");
     }
-}
-
-fn open_verification_url(device_info: &DeviceInfo) {
-    let timestamp = now_ms() / 1000;
-    // 拼接格式: product.deviceId.serial.timestamp
-    let verify_data = format!(
-        "{}.{}.{}.{}",
-        device_info.product,
-        device_info.deviceId,
-        device_info.serial,
-        timestamp
-    );
-
-    let encoded_data = encode(&verify_data);
-    let verify_url = format!(
-        "{}/api/v2/verify/Eternal?data={}",
-        server_api_base(),
-        encoded_data
-    );
-
-    tracing::info!("打开验证页面: {}", verify_url);
-    dialog::open_url(&verify_url);
 }
 
 /// 免费版验证
@@ -1115,13 +1070,6 @@ async fn send_interconnect_message(device_addr: &str, payload: &str) -> bool {
             false
         }
     }
-}
-
-async fn send_weather_to_device(payload: &str) -> Result<(), String> {
-    let device_addr = get_device_addr().await.ok_or("没有连接的设备")?;
-    send_interconnect_message(&device_addr, payload).await;
-    std::thread::sleep(Duration::from_secs(2));
-    Ok(())
 }
 
 async fn ensure_app_launched(device_addr: &str) -> bool {
