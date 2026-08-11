@@ -2,6 +2,41 @@
 
 ## 版本历史
 
+### v3.3.21 (2026-07-17)
+
+**背景图上传增强（分块、进度、超时、批量删除）**
+
+#### 改进
+
+1. **分块上传（修复 ArrayBuffer 错误）**
+   - 每块原始数据 10KB，base64 编码后约 13.6KB，避免单条消息过大导致 `TypeError: ArrayBuffer object expected`
+   - 首块 `append: false`（覆盖写入），后续块 `append: true`（追加写入）
+   - 收到每块 `UPLOAD_FILE_DONE` 后才发下一块（串行，避免乱序）
+   - 全部块完成后自动 `REFRESH_BG`
+
+2. **上传进度显示**
+   - 背景 Tab 顶部显示进度条：`正在上传 <名>：current/total 块 (百分比)`
+   - 对应天气项卡片内也显示 `上传中 NN%` 和进度条（网格/列表均支持）
+
+3. **超时与断连逻辑**
+   - 每块发送后启动 20 秒一次性定时器（`bg_upload_timeout`），收到 DONE 立即清除
+   - 超时弹出"上传超时，请重试"并清理任务
+   - 发送前检查设备连接，断连则中止并提示
+   - `REFRESH_BG` 同样有 20 秒超时（`bg_refresh_timeout`）
+
+4. **删除所有背景图**
+   - 设置页"更多内容"新增红色卡片"删除所有背景图"（样式与删除设备本地授权一致）
+   - 逐个发送 `DEL_FILE`，全部完成后发一次 `REFRESH_BG`，批量期间不重复刷新
+
+#### 技术要点
+
+- `psys_host::timer::set_timeout(ms, &str) -> u64` 直接返回 timer_id（非 Result），payload 需传 `&str`
+- 定时器回调经 `EventType::Timer` → `handle_timer_payload` 按 payload 字符串分发
+- 新增状态：`BgUploadTask { name, data, total, current, timer_id }`、`bg_deleting_all`
+- 新增事件常量：`DELETE_ALL_BG_EVENT`、`BG_TIMEOUT_PAYLOAD`、`BG_REFRESH_TIMEOUT_PAYLOAD`
+
+---
+
 ### v3.3.20 (2026-07-17)
 
 **新增背景图管理 Tab**
