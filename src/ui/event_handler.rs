@@ -1171,13 +1171,15 @@ async fn send_interconnect_message(device_addr: &str, payload: &str) -> bool {
         return false;
     }
 
+    send_interconnect_raw(device_addr, payload).await
+}
+
+/// 直接发送 interconnect 消息（不重新启动应用），用于分块上传等连续发送场景
+async fn send_interconnect_raw(device_addr: &str, payload: &str) -> bool {
     let _ = register::register_interconnect_recv(device_addr, QA_PKG_NAME).await;
 
     match interconnect::send_qaic_message(device_addr, QA_PKG_NAME, payload).await {
-        Ok(_) => {
-            tracing::info!("消息发送成功");
-            true
-        }
+        Ok(_) => true,
         Err(e) => {
             tracing::error!("消息发送失败: {:?}", e);
             false
@@ -1835,7 +1837,13 @@ fn send_next_bg_chunk(name: String) {
             }
         }
 
-        let ok = send_interconnect_message(&device_addr, &payload).await;
+        // 首块用 send_interconnect_message（会启动应用一次）；
+        // 后续块用 send_interconnect_raw，避免每块都重启快应用导致追加写入失败
+        let ok = if is_first {
+            send_interconnect_message(&device_addr, &payload).await
+        } else {
+            send_interconnect_raw(&device_addr, &payload).await
+        };
 
         if !ok {
             cancel_bg_upload("发送失败，请检查设备连接");
