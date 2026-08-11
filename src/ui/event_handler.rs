@@ -47,12 +47,11 @@ pub const DELETE_ALL_BG_EVENT: &str = "delete_all_bg";
 pub const CANCEL_BG_UPLOAD_EVENT: &str = "cancel_bg_upload";
 
 // 背景上传分块与超时配置
-// 重要：分块大小必须是 3 的倍数！base64 每 3 字节编码为 4 字符，
-// 只有按 3 的倍数分块，每块独立 base64 后才不会产生 padding，
-// Vela 端逐块 atob 解码再 append 时字节才不会错位。
-// 20478 = 6826 * 3，最接近 20KB 的 3 的倍数。
-const BG_CHUNK_SIZE: usize = 20478; // 每块原始数据约 20KB（3的倍数）
-const BG_LARGE_FILE_THRESHOLD: usize = 20 * 1024; // 大于20KB给予二次确认
+// 与 image-base64-watch-transfer 文档一致：
+// 先整体 base64，再按 base64 字符切片，片长向下对齐到 4 的倍数。
+// 16384 = 16*1024，本身是4的倍数；对应原始数据约 12KB/块。
+const BG_CHUNK_SIZE: usize = 16 * 1024; // base64 分片字符数（4的倍数）
+const BG_LARGE_FILE_THRESHOLD: usize = 20 * 1024; // 大于20KB（原始字节）给予二次确认
 const BG_UPLOAD_TIMEOUT_MS: u64 = 20_000; // 单块上传超时 20 秒
 const BG_REFRESH_TIMEOUT_MS: u64 = 20_000; // 刷新/删除超时 20 秒
 const BG_TIMEOUT_PAYLOAD: &str = "bg_upload_timeout";
@@ -1753,13 +1752,19 @@ fn upload_background(name: String) {
 
         tracing::info!("选中文件: {}, 大小: {} 字节", picked.name, picked.data.len());
 
-        // 大于 20KB 给予二次确认（分块上传会比较慢，且可能无法正常显示）
+        // 先整体 base64 编码（NO_WRAP，无换行、无 MIME 前缀）
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let base64 = STANDARD.encode(&picked.data);
+
+        // 按 4 字符对齐切片（非末片长度均为4的倍数）
+        let chunks = split_base64_aligned(&base64, BG_CHUNK_SIZE);
+
+        // 大于 20KB（原始字节）给予二次确认
         if picked.data.len() > BG_LARGE_FILE_THRESHOLD {
             let size_kb = picked.data.len() as f64 / 1024.0;
-            let chunks = picked.data.len().div_ceil(BG_CHUNK_SIZE).max(1);
             let msg = format!(
                 "图片较大（{:.1} KB），将分为 {} 块逐块上传，可能需要一些时间，并且可能无法正常显示，是否继续？",
-                size_kb, chunks
+                size_kb, chunks.len()
             );
             if !show_confirm("文件较大", &msg) {
                 return;
@@ -1767,10 +1772,10 @@ fn upload_background(name: String) {
         }
 
         // 计算分块
-        let total = picked.data.len().div_ceil(BG_CHUNK_SIZE).max(1);
+        let total = chunks.len().max(1);
         let task = BgUploadTask {
             name: name.clone(),
-            data: picked.data,
+            chunks,
             total,
             current: 0,
             timer_id: None,
@@ -1788,19 +1793,35 @@ fn upload_background(name: String) {
     });
 }
 
+/// 将完整 base64 字符串按 4 字符对齐切片。
+/// 除最后一片外，每片长度都是 4 的倍数，保证 Vela 端逐片 atob 解码可直接 append。
+fn split_base64_aligned(base64: &str, max_len: usize) -> Vec<String> {
+    if base64.is_empty() {
+        return Vec::new();
+    }
+    // 向下对齐到 4 的倍数
+    let slice_len = (max_len / 4) * 4;
+    let slice_len = slice_len.max(4);
+    let bytes = base64.as_bytes();
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < bytes.len() {
+        let end = (start + slice_len).min(bytes.len());
+        // SAFETY: base64 字符都是 ASCII，按字节切不会破坏 UTF-8
+        chunks.push(unsafe { String::from_utf8_unchecked(bytes[start..end].to_vec()) });
+        start = end;
+    }
+    chunks
+}
+
 /// 发送下一个分块（或完成上传后刷新）
 fn send_next_bg_chunk(name: String) {
-    // 取出当前块信息（克隆数据避免借用冲突）
+    // 取出当前分片（直接使用已编码好的 base64 分片，不再逐块编码）
     let (chunk_b64, is_first, has_task) = {
         let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
         match state.bg_upload.as_ref() {
-            Some(task) if task.name == name => {
-                let idx = task.current;
-                let start = idx * BG_CHUNK_SIZE;
-                let end = (start + BG_CHUNK_SIZE).min(task.data.len());
-                use base64::{Engine as _, engine::general_purpose::STANDARD};
-                let b64 = STANDARD.encode(&task.data[start..end]);
-                (b64, idx == 0, true)
+            Some(task) if task.name == name && task.current < task.chunks.len() => {
+                (task.chunks[task.current].clone(), task.current == 0, true)
             }
             _ => (String::new(), false, false),
         }

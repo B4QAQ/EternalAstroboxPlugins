@@ -146,9 +146,9 @@ pub struct UiState {
 /// 背景图分块上传任务
 #[derive(Clone, Default)]
 pub struct BgUploadTask {
-    pub name: String,        // 天气背景名
-    pub data: Vec<u8>,       // 原始文件字节
-    pub total: usize,        // 总块数
+    pub name: String,          // 天气背景名
+    pub chunks: Vec<String>,   // base64 分片；非末片长度均为4的倍数
+    pub total: usize,          // 总块数
     pub current: usize,      // 已发送块数（0-based，等于下一块索引）
     pub timer_id: Option<u64>, // 超时定时器ID
 }
