@@ -1560,6 +1560,33 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         None,
     );
 
+    // 背景上传分片大小选择
+    let chunk_text = match state.bg_chunk_size {
+        4096 => "4K",
+        8192 => "8K",
+        _ => "16K",
+    };
+    let mut chunk_select = ui::Element::new(ui::ElementType::Select, Some(chunk_text))
+        .on(ui::Event::Change, BG_CHUNK_SIZE_EVENT)
+        .radius(8)
+        .padding(10)
+        .bg("#2A2A2A")
+        .size(14);
+
+    for label in ["4K", "8K", "16K"] {
+        let option = ui::Element::new(ui::ElementType::Option, Some(label))
+            .prop("value", label);
+        chunk_select = chunk_select.child(option);
+    }
+
+    let chunk_card = build_settings_card(
+        icons::bg_svg(),
+        "背景上传分片",
+        Some("越小越稳定，越大数据块越大"),
+        Some(chunk_select),
+        None,
+    );
+
     // 更多内容
     let more_title = build_section_title("更多内容");
 
@@ -1658,7 +1685,8 @@ fn build_settings_tab(state: &UiState) -> ui::Element {
         .child(refresh_button)
         .child(search_title)
         .child(range_card)
-        .child(number_card);
+        .child(number_card)
+        .child(chunk_card);
 
     for card in info_cards {
         root = root.child(card);

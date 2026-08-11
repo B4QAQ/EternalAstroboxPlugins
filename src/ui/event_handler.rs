@@ -45,12 +45,12 @@ pub const UPLOAD_BG_PREFIX: &str = "upload_bg:";
 pub const DELETE_BG_PREFIX: &str = "delete_bg:";
 pub const DELETE_ALL_BG_EVENT: &str = "delete_all_bg";
 pub const CANCEL_BG_UPLOAD_EVENT: &str = "cancel_bg_upload";
+pub const BG_CHUNK_SIZE_EVENT: &str = "bg_chunk_size";
 
 // 背景上传分块与超时配置
-// 与 image-base64-watch-transfer 文档一致：
-// 先整体 base64，再按 base64 字符切片，片长向下对齐到 4 的倍数。
-// 16384 = 16*1024，本身是4的倍数；对应原始数据约 12KB/块。
-const BG_CHUNK_SIZE: usize = 16 * 1024; // base64 分片字符数（4的倍数）
+// 与 image-base64-watch-transfer 文档一致：先整体 base64，再按 base64 字符切片，
+// 片长为 4 的倍数。可选 4K/8K/16K（设置项），默认 16K。
+const BG_DEFAULT_CHUNK_SIZE: usize = 16 * 1024;
 const BG_LARGE_FILE_THRESHOLD: usize = 20 * 1024; // 大于20KB（原始字节）给予二次确认
 const BG_UPLOAD_TIMEOUT_MS: u64 = 20_000; // 单块上传超时 20 秒
 const BG_REFRESH_TIMEOUT_MS: u64 = 20_000; // 刷新/删除超时 20 秒
@@ -248,6 +248,22 @@ pub fn ui_event_processor(
         REFRESH_BG_EVENT => request_bg_info(),
         DELETE_ALL_BG_EVENT => delete_all_backgrounds(),
         CANCEL_BG_UPLOAD_EVENT => cancel_background_upload(),
+        BG_CHUNK_SIZE_EVENT => {
+            let value = parse_event_value(event_payload);
+            // value 为 "4096"/"8192"/"16384" 或 "4K"/"8K"/"16K"
+            let size = match value.as_str() {
+                "4096" | "4K" => 4096,
+                "8192" | "8K" => 8192,
+                "16384" | "16K" => 16384,
+                _ => BG_DEFAULT_CHUNK_SIZE,
+            };
+            {
+                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.bg_chunk_size = size;
+            }
+            let _ = crate::ui::state::save_all_settings();
+            crate::ui::build::rerender_main_ui();
+        }
         TOGGLE_BG_LAYOUT_EVENT => {
             let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
             state.bg_layout_grid = !state.bg_layout_grid;
@@ -1756,8 +1772,18 @@ fn upload_background(name: String) {
         use base64::{Engine as _, engine::general_purpose::STANDARD};
         let base64 = STANDARD.encode(&picked.data);
 
+        // 读取用户设置的分片大小（默认 16K）
+        let chunk_size = {
+            let s = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+            if matches!(s.bg_chunk_size, 4096 | 8192 | 16384) {
+                s.bg_chunk_size
+            } else {
+                BG_DEFAULT_CHUNK_SIZE
+            }
+        };
+
         // 按 4 字符对齐切片（非末片长度均为4的倍数）
-        let chunks = split_base64_aligned(&base64, BG_CHUNK_SIZE);
+        let chunks = split_base64_aligned(&base64, chunk_size);
 
         // 大于 20KB（原始字节）给予二次确认
         if picked.data.len() > BG_LARGE_FILE_THRESHOLD {

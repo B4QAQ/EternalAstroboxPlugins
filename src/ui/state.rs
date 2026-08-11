@@ -141,6 +141,7 @@ pub struct UiState {
     pub bg_layout_grid: bool, // 背景列表布局：true=网格，false=列表
     pub bg_upload: Option<BgUploadTask>, // 当前分块上传任务
     pub bg_deleting_all: bool, // 是否正在删除所有背景
+    pub bg_chunk_size: usize, // 背景上传分片大小（base64字符数，4的倍数）：4096/8192/16384
 }
 
 /// 背景图分块上传任务
@@ -226,6 +227,7 @@ pub fn ui_state() -> &'static RwLock<UiState> {
             bg_layout_grid: true,
             bg_upload: None,
             bg_deleting_all: false,
+            bg_chunk_size: 16 * 1024, // 默认 16K
         };
         RwLock::new(state)
     })
@@ -274,10 +276,16 @@ struct StoredApiSettings {
     city_search_range: String,
     #[serde(default = "default_search_number")]
     city_search_number: u32,
+    #[serde(default = "default_chunk_size")]
+    bg_chunk_size: usize,
 }
 
 fn default_search_number() -> u32 {
     10
+}
+
+fn default_chunk_size() -> usize {
+    16 * 1024
 }
 
 pub fn load_api_settings_once() {
@@ -319,6 +327,10 @@ pub fn load_api_settings_once() {
                 }
                 if stored.city_search_number > 0 {
                     state.city_search_number = stored.city_search_number;
+                }
+                // 加载背景分片大小（只允许 4K/8K/16K）
+                if matches!(stored.bg_chunk_size, 4096 | 8192 | 16384) {
+                    state.bg_chunk_size = stored.bg_chunk_size;
                 }
 
                 // 如果有APIKey，标记为已验证
@@ -366,6 +378,7 @@ pub fn save_all_settings() -> Result<(), String> {
         city_list: state.city_list.clone(),
         city_search_range: state.city_search_range.clone(),
         city_search_number: state.city_search_number,
+        bg_chunk_size: state.bg_chunk_size,
     };
 
     let content = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;
