@@ -51,7 +51,6 @@ pub const BG_CHUNK_SIZE_EVENT: &str = "bg_chunk_size";
 // 与 image-base64-watch-transfer 文档一致：先整体 base64，再按 base64 字符切片，
 // 片长为 4 的倍数。可选 4K/8K/16K（设置项），默认 16K。
 const BG_DEFAULT_CHUNK_SIZE: usize = 16 * 1024;
-const BG_LARGE_FILE_THRESHOLD: usize = 20 * 1024; // 大于20KB（原始字节）给予二次确认
 const BG_UPLOAD_TIMEOUT_MS: u64 = 20_000; // 单块上传超时 20 秒
 const BG_REFRESH_TIMEOUT_MS: u64 = 20_000; // 刷新/删除超时 20 秒
 const BG_TIMEOUT_PAYLOAD: &str = "bg_upload_timeout";
@@ -532,34 +531,104 @@ fn select_city_by_name(name: &str) {
 // ========== 验证流程 ==========
 
 fn handle_apikey_received(api_key: &str) {
-    tracing::info!("收到APIKey: {}", api_key);
+    tracing::info!("收到设备APIKey");
 
     if api_key.trim().is_empty() {
         handle_apikey_invalid();
         return;
     }
 
-    {
-        let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
-        state.api_key = api_key.to_string();
-        state.api_key_verified = true;
-        state.verification_status = VerificationStatus::Verified;
-    }
+    // 激活时检测到设备已有 Key，先询问用户是否使用，避免无效 Key 导致无限循环
+    let device_key = api_key.trim().to_string();
+    let masked = mask_api_key(&device_key);
+    let msg = format!("设备上已存在授权 Key：\n{}\n\n是否使用该 Key？", masked);
 
-    let _ = crate::ui::state::save_all_settings();
-    show_alert("成功", "APIKey验证成功");
-    crate::ui::build::rerender_main_ui();
-
-    // 获取设备信息（请求用量等）
     wit_bindgen::block_on(async move {
-        if get_device_addr().await.is_some() {
-            fetch_device_info_from_server();
+        let use_key = show_confirm_async("检测到设备Key", &msg).await;
+        if use_key {
+            tracing::info!("用户选择使用设备 Key");
+            {
+                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.api_key = device_key;
+                state.api_key_verified = true;
+                state.verification_status = VerificationStatus::Verified;
+            }
+            let _ = crate::ui::state::save_all_settings();
+            crate::ui::build::rerender_main_ui();
+            if get_device_addr().await.is_some() {
+                fetch_device_info_from_server();
+            }
+        } else {
+            tracing::info!("用户选择不使用设备 Key，进入重新验证流程");
+            // 清空本地可能的 Key，走设备信息+支付验证流程
+            {
+                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.api_key = String::new();
+                state.api_key_verified = false;
+                state.verification_status = VerificationStatus::GettingDeviceInfo;
+            }
+            crate::ui::build::rerender_main_ui();
+            if let Some(device_addr) = get_device_addr().await {
+                get_device_info_and_verify(&device_addr, false);
+            }
         }
     });
 }
 
+/// 脱敏显示 APIKey：前4位 + *** + 后4位
+fn mask_api_key(key: &str) -> String {
+    let chars: Vec<char> = key.chars().collect();
+    if chars.len() <= 12 {
+        return key.to_string();
+    }
+    let prefix: String = chars[..4].iter().collect();
+    let suffix: String = chars[chars.len() - 4..].iter().collect();
+    format!("{}****{}", prefix, suffix)
+}
+
+/// 异步确认对话框，返回是否点击确定
+async fn show_confirm_async(title: &str, message: &str) -> bool {
+    let result = psys_host::dialog::show_dialog(
+        psys_host::dialog::DialogType::Alert,
+        psys_host::dialog::DialogStyle::Website,
+        &psys_host::dialog::DialogInfo {
+            title: title.to_string(),
+            content: message.to_string(),
+            buttons: vec![
+                psys_host::dialog::DialogButton {
+                    id: "cancel".to_string(),
+                    primary: false,
+                    content: "重新验证".to_string(),
+                },
+                psys_host::dialog::DialogButton {
+                    id: "ok".to_string(),
+                    primary: true,
+                    content: "使用".to_string(),
+                },
+            ],
+        },
+    )
+    .await;
+    result.clicked_btn_id == "ok"
+}
+
 fn handle_apikey_invalid() {
     tracing::info!("APIKey无效，需要验证");
+
+    // 防止无限循环：检查是否已经在设备验证流程中
+    let already_verifying = {
+        let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        matches!(
+            state.verification_status,
+            VerificationStatus::GettingDeviceInfo | VerificationStatus::WaitingPayment
+        )
+    };
+
+    if already_verifying {
+        tracing::info!("已在验证流程中，避免无限循环");
+        return;
+    }
+
     wit_bindgen::block_on(async move {
         if let Some(device_addr) = get_device_addr().await {
             get_device_info_and_verify(&device_addr, false);
@@ -1785,14 +1854,15 @@ fn upload_background(name: String) {
         // 按 4 字符对齐切片（非末片长度均为4的倍数）
         let chunks = split_base64_aligned(&base64, chunk_size);
 
-        // 大于 20KB（原始字节）给予二次确认
-        if picked.data.len() > BG_LARGE_FILE_THRESHOLD {
+        // 只要需要分片传输（超过1块），就给予提示
+        if chunks.len() > 1 {
             let size_kb = picked.data.len() as f64 / 1024.0;
+            let chunk_kb = chunk_size / 1024;
             let msg = format!(
-                "图片较大（{:.1} KB），将分为 {} 块逐块上传，可能需要一些时间，并且可能无法正常显示，是否继续？",
-                size_kb, chunks.len()
+                "图片较大（{:.1} KB），将以 {}K 为单位分为 {} 块逐块上传，可能需要一些时间，是否继续？",
+                size_kb, chunk_kb, chunks.len()
             );
-            if !show_confirm("文件较大", &msg) {
+            if !show_confirm("分片上传", &msg) {
                 return;
             }
         }
