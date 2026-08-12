@@ -166,22 +166,24 @@ pub fn handle_interconnect_message(payload: &str) {
                 }
             }
             "DEL_FILE_DONE" => {
-                let deleting_all = {
+                let (deleting_all, is_uploading) = {
                     let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
-                    state.bg_deleting_all
+                    (state.bg_deleting_all, state.bg_uploading.is_some())
                 };
                 if status == "OK" {
                     tracing::info!("文件删除成功");
-                    // 批量删除时由批量流程统一刷新；单个删除则刷新（刷新会重启超时定时器）
-                    if !deleting_all {
+                    // 批量删除时由批量流程统一刷新；
+                    // 替换场景（正在上传）时不刷新，删除只是上传前的清理
+                    if !deleting_all && !is_uploading {
                         request_refresh_bg();
-                    } else {
-                        // 批量删除中的单块确认，不结束操作，等全部发完由批量流程发 REFRESH_BG
                     }
                 } else {
-                    finish_bg_op();
-                    set_bg_loading(false);
-                    show_alert("失败", &format!("背景删除失败: {}", status));
+                    // 替换场景下删除失败不阻塞后续上传（append:false 会覆盖）
+                    if !is_uploading {
+                        finish_bg_op();
+                        set_bg_loading(false);
+                        show_alert("失败", &format!("背景删除失败: {}", status));
+                    }
                 }
             }
             "REFRESH_BG_DONE" => {
@@ -1879,6 +1881,30 @@ fn upload_background(name: String) {
             );
             if !show_confirm("分片上传", &msg) {
                 return;
+            }
+        }
+
+        // 替换已存在的背景：先删除旧文件，确保干净写入（避免 append:false 不截断导致残留）
+        let already_installed = {
+            let state = ui_state().read().unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.bg_installed.contains(&name)
+        };
+        if already_installed {
+            tracing::info!("替换背景，先删除旧文件: {}", name);
+            // 先标记 uploading，避免 DEL_FILE_DONE 触发刷新干扰后续上传
+            {
+                let mut state = ui_state().write().unwrap_or_else(|poisoned| poisoned.into_inner());
+                state.bg_uploading = Some(name.clone());
+            }
+            if let Some(device_addr) = get_device_addr().await {
+                let uri = format!("internal://files/bg/{}.png", name);
+                let del_payload = serde_json::json!({
+                    "type": "DEL_FILE",
+                    "data": { "uri": uri }
+                }).to_string();
+                // 发删除指令并稍等，确保手表端删除完成
+                send_interconnect_raw(&device_addr, &del_payload).await;
+                std::thread::sleep(std::time::Duration::from_millis(300));
             }
         }
 
