@@ -1151,7 +1151,7 @@ fn send_weather_data() {
         let mut error_msg = String::new();
 
         // 向API请求用户选择的天数
-        let url = format!("{}/api/v2/3f/getWeather/Eternal", server_api_base());
+        let url = format!("{}/api/v2/weather/getWeather/Eternal", server_api_base());
         let body = serde_json::json!({
             "Key": &api_key_clone,
             "longitude": &city_clone.lon,
@@ -1253,7 +1253,7 @@ fn send_weather_data() {
 
 /// 同步天气预警数据
 async fn send_weather_alerts(api_key: &str, city: &CityInfo, city_index: usize) -> Result<(), String> {
-    let url = format!("{}/api/v2/3f/getWarn/Eternal", server_api_base());
+    let url = format!("{}/api/v2/weather/getWarn/Eternal", server_api_base());
     let body = serde_json::json!({
         "Key": api_key,
         "longitude": city.lon,
@@ -1481,7 +1481,7 @@ fn search_city(keyword: &str) {
     };
 
     wit_bindgen::block_on(async move {
-        let url = format!("{}/api/v2/3f/getCity/Eternal", server_api_base());
+        let url = format!("{}/api/v2/weather/getCity/Eternal", server_api_base());
         let body = serde_json::json!({
             "Key": ui_state().read().unwrap().api_key,
             "location": keyword,
